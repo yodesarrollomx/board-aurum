@@ -727,6 +727,27 @@ function Board({ onLogout }) {
   const [saveStatus, setSaveStatus] = useState({});
   const [confirmDialog, setConfirmDialog] = useState({ open: false });
 
+  // MOAC — Metas → Objetivos → Acciones (libro aparte, sheet-driven; el board solo lee y liga)
+  const [moac, setMoac] = useState(() => { try { const c = localStorage.getItem("aurum-moac-v1"); return c ? JSON.parse(c) : null; } catch { return null; } });
+  const [moacErr, setMoacErr] = useState("");
+  const loadMoac = useCallback(async (fresh = false) => {
+    try {
+      const r = await apiCall("moac", fresh ? { fresh: true } : {});
+      setMoac(r); setMoacErr("");
+      try { localStorage.setItem("aurum-moac-v1", JSON.stringify(r)); } catch {}
+    } catch (e) { setMoacErr(e.message || String(e)); }
+  }, []);
+  useEffect(() => { loadMoac(); const id = setInterval(() => loadMoac(), 5 * 60 * 1000); return () => clearInterval(id); }, [loadMoac]);
+  const assignMoac = useCallback(async (tareaId, objetivoId) => {
+    // optimista: la liga se ve al instante; el Sheet se actualiza atrás
+    setMoac(prev => prev ? { ...prev, tareas: { ...(prev.tareas || {}), [tareaId]: { ...((prev.tareas || {})[tareaId] || {}), objetivo_id: objetivoId, meta_id: (prev.objetivos || []).find(o => o.objetivo_id === objetivoId)?.meta_id || "" } } } : prev);
+    try { await apiCall("moacSet", { tareaId, objetivoId }); } catch (e) { setMoacErr("No se pudo ligar: " + (e.message || e)); }
+  }, []);
+  const setMoacObjetivoEstado = useCallback(async (objetivoId, estado) => {
+    setMoac(prev => prev ? { ...prev, objetivos: (prev.objetivos || []).map(o => o.objetivo_id === objetivoId ? { ...o, estado } : o) } : prev);
+    try { await apiCall("moacObjetivo", { objetivoId, estado }); } catch (e) { setMoacErr("No se pudo cambiar el objetivo: " + (e.message || e)); }
+  }, []);
+
   // Estados de UI
   // Colaboradores arrancan en "Mi semana" (lo más accionable para ellos); Dirección
   // y quien no tenga rol cacheado, en "Personas" (comportamiento previo — sin regresión).
@@ -1253,6 +1274,16 @@ function Board({ onLogout }) {
                     {PRIORIDADES.map(p => <option key={p}>{p}</option>)}
                   </select>
                 </Field>
+                <Field label="Objetivo MOAC (¿a qué meta sirve?)">
+                  <select className="input" value={(moac && moac.tareas && moac.tareas[selectedTask.id] && moac.tareas[selectedTask.id].objetivo_id) || ""} onChange={e => assignMoac(selectedTask.id, e.target.value)}>
+                    <option value="">— sin objetivo (decidir el lunes) —</option>
+                    {(moac && moac.metas || []).map(m => (
+                      <optgroup key={m.meta_id} label={`${m.meta_id}${m.principal === "SI" ? " ★" : ""} · ${String(m.texto || "").slice(0, 60)}`}>
+                        {(moac.objetivos || []).filter(o => o.meta_id === m.meta_id).map(o => <option key={o.objetivo_id} value={o.objetivo_id}>{o.objetivo_id} · {String(o.texto || "").slice(0, 70)}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </Field>
               </div>
               <div className="mt-4 grid gap-3">
                 <Field label="Actividad"><textarea className="input min-h-[80px]" value={selectedTask.actividad || ""} onChange={e => updateTaskField(selectedTask.id, { actividad: e.target.value })} /></Field>
@@ -1510,6 +1541,9 @@ function Board({ onLogout }) {
         {/* CENTRO DE DECISIÓN — post-its al entrar, solo Dirección */}
         <DecisionCenter tasks={tasks} addComentario={addComentario} updateTaskField={updateTaskField} />
 
+        {/* MOAC — Metas → Objetivos → Acciones (lee el libro MOAC; liga tareas a objetivos) */}
+        <MoacPanel moac={moac} err={moacErr} tasks={tasks} onOpenTask={setSelectedTaskId} onAssign={assignMoac} onObjetivoEstado={setMoacObjetivoEstado} onReload={() => loadMoac(true)} />
+
         {/* VISTAS */}
         <main>
           {currentView === "personas" && (
@@ -1761,6 +1795,193 @@ function DecisionCenter({ tasks, addComentario, updateTaskField }) {
       )}
       {zoomTask && <PostItDetalle t={zoomTask} addComentario={addComentario} updateTaskField={updateTaskField} onCerrar={() => setZoomId(null)} />}
     </>
+  );
+}
+
+
+// ===================================================================
+// MOAC — Metas → Objetivos → Acciones
+// Fuente: libro "MOAC · Metas, Objetivos y Acciones" (Sheet). Acción "moac" del backend.
+// Regla D.2 (2022): una tarea entra a la semana SOLO si cierra un objetivo → el
+// contador "tareas sin objetivo" debe ser 0.
+// ===================================================================
+function moacDias(fecha) {
+  if (!fecha) return null;
+  const d = new Date(String(fecha).slice(0, 10) + "T12:00:00");
+  if (isNaN(d)) return null;
+  const hoy = new Date(); hoy.setHours(12, 0, 0, 0);
+  return Math.round((d - hoy) / 86400000);
+}
+function moacSemaforo(o) {
+  const est = String(o.estado || "");
+  if (est === "Cerrado") return "ok";
+  if (est === "Cancelado") return "off";
+  const d = moacDias(o.fecha);
+  if (d === null) return "na";
+  if (d < 0) return "rojo";
+  if (d <= 14) return "ambar";
+  return "verde";
+}
+function moacFechaCorta(f) {
+  const d = moacDias(f);
+  if (d === null) return "";
+  if (d < 0) return `vencido ${-d} d`;
+  if (d === 0) return "hoy";
+  return `en ${d} d`;
+}
+function MoacPanel({ moac, err, tasks, onOpenTask, onAssign, onObjetivoEstado, onReload }) {
+  const [abierto, setAbierto] = useState(() => { try { return localStorage.getItem("aurum-moac-open") !== "0"; } catch { return true; } });
+  const [metaSel, setMetaSel] = useState(null);
+  const [objSel, setObjSel] = useState(null);
+  const [verSin, setVerSin] = useState(false);
+  useEffect(() => { try { localStorage.setItem("aurum-moac-open", abierto ? "1" : "0"); } catch {} }, [abierto]);
+
+  const vivas = useMemo(() => tasks.filter(t => !t.archivada && !t.borrada && normalizeEstado(t.estado) !== "Terminado"), [tasks]);
+  const mapa = (moac && moac.tareas) || {};
+  const metas = (moac && moac.metas) || [];
+  const objetivos = (moac && moac.objetivos) || [];
+  const sinObjetivo = useMemo(() => vivas.filter(t => !(mapa[t.id] && mapa[t.id].objetivo_id)), [vivas, mapa]);
+  const sinObjetivoSemana = useMemo(() => sinObjetivo.filter(t => { const d = daysUntil(t); return d !== null && d !== undefined && d <= 7; }), [sinObjetivo]);
+  const porObjetivo = useMemo(() => {
+    const m = {};
+    tasks.forEach(t => { const oid = mapa[t.id] && mapa[t.id].objetivo_id; if (!oid) return; (m[oid] = m[oid] || []).push(t); });
+    return m;
+  }, [tasks, mapa]);
+  const statMeta = (metaId) => {
+    const objs = objetivos.filter(o => o.meta_id === metaId);
+    const cerr = objs.filter(o => o.estado === "Cerrado").length;
+    const activos = objs.filter(o => o.estado !== "Cancelado");
+    let tt = 0, td = 0;
+    objs.forEach(o => (porObjetivo[o.objetivo_id] || []).forEach(t => { if (t.borrada) return; tt++; if (normalizeEstado(t.estado) === "Terminado") td++; }));
+    const rojos = objs.filter(o => moacSemaforo(o) === "rojo").length;
+    return { objs: activos.length, cerr, pctObj: activos.length ? Math.round(cerr / activos.length * 100) : 0, tt, td, pctT: tt ? Math.round(td / tt * 100) : 0, rojos };
+  };
+
+  if (!moac && !err) return null;
+  if (!moac && err) {
+    return <div className="moac-wrap"><div className="moac-head"><span className="yo-eyebrow">MOAC · Metas → Objetivos → Acciones</span><span className="moac-err">MOAC no disponible: {err}</span><button className="btn-ghost" onClick={onReload}>Reintentar</button></div></div>;
+  }
+
+  const metaAbierta = metaSel ? metas.find(m => m.meta_id === metaSel) : null;
+  const objAbierto = objSel ? objetivos.find(o => o.objetivo_id === objSel) : null;
+  const tareasObj = objAbierto ? (porObjetivo[objAbierto.objetivo_id] || []).filter(t => !t.borrada).sort((a, b) => (normalizeEstado(a.estado) === "Terminado") - (normalizeEstado(b.estado) === "Terminado")) : [];
+
+  return (
+    <section className="moac-wrap yo-card">
+      <div className="moac-head">
+        <button className="moac-toggle" onClick={() => setAbierto(a => !a)} title={abierto ? "Ocultar" : "Mostrar"}>
+          <span className="yo-eyebrow">MOAC · Metas → Objetivos → Acciones</span>
+          <span className="moac-sub">{metas.length} metas · {objetivos.filter(o => o.estado !== "Cancelado").length} objetivos · {vivas.length - sinObjetivo.length}/{vivas.length} tareas abiertas con objetivo</span>
+        </button>
+        <div className="moac-actions">
+          <button className={`moac-chip ${sinObjetivo.length ? "moac-chip-alerta" : "moac-chip-ok"}`} onClick={() => setVerSin(v => !v)} title="Regla D.2: una tarea entra a la semana solo si cierra un objetivo">
+            {sinObjetivo.length ? `⚠ ${sinObjetivo.length} sin objetivo · ${sinObjetivoSemana.length} de esta semana` : "✓ 0 tareas sin objetivo"}
+          </button>
+          {err && <span className="moac-err" title={err}>⚠</span>}
+          <a className="btn-ghost" href="https://docs.google.com/spreadsheets/d/1HaUMdocq78kZPilNST6P-GHJjLMMPjWe0Pe8iXqnBBQ/edit" target="_blank" rel="noreferrer" title="Editar metas y objetivos en el Sheet">Sheet ↗</a>
+          <button className="btn-ghost" onClick={onReload} title="Releer el libro MOAC">↻</button>
+        </div>
+      </div>
+
+      {abierto && (
+        <div className="moac-grid">
+          {metas.map(m => {
+            const st = statMeta(m.meta_id);
+            const on = metaSel === m.meta_id;
+            return (
+              <button key={m.meta_id} className={`moac-meta ${on ? "on" : ""} ${m.principal === "SI" ? "principal" : ""}`} onClick={() => { setMetaSel(on ? null : m.meta_id); setObjSel(null); }}>
+                <div className="moac-meta-top"><span className="moac-meta-id">{m.meta_id}{m.principal === "SI" ? " ★" : ""}</span><span className="moac-meta-fecha">{m.fecha ? String(m.fecha).slice(0, 10) : ""}</span></div>
+                <div className="moac-meta-txt">{m.texto}</div>
+                <div className="moac-meta-meta">{m.dueno ? `Dueño: ${m.dueno}` : ""}{st.rojos ? ` · ${st.rojos} objetivo${st.rojos === 1 ? "" : "s"} vencido${st.rojos === 1 ? "" : "s"}` : ""}</div>
+                <div className="moac-bar" title={`${st.cerr}/${st.objs} objetivos cerrados`}><div className="moac-bar-fill" style={{ width: `${st.pctObj}%` }} /></div>
+                <div className="moac-bar-l">{st.cerr}/{st.objs} objetivos · {st.td}/{st.tt} tareas</div>
+                <div className="moac-bar moac-bar-t" title={`${st.td}/${st.tt} tareas terminadas`}><div className="moac-bar-fill" style={{ width: `${st.pctT}%` }} /></div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {abierto && metaAbierta && (
+        <div className="moac-detalle">
+          <div className="moac-det-head">
+            <div>
+              <div className="yo-eyebrow">{metaAbierta.meta_id} · {metaAbierta.dueno || ""} · {metaAbierta.fecha ? String(metaAbierta.fecha).slice(0, 10) : ""}</div>
+              <div className="moac-det-txt">{metaAbierta.texto}</div>
+              {metaAbierta.partida && <div className="moac-det-sub"><b>Punto de partida:</b> {metaAbierta.partida}</div>}
+              {metaAbierta.por_qu_ && <div className="moac-det-sub"><b>Por qué:</b> {metaAbierta.por_qu_}</div>}
+            </div>
+            <button className="btn-ghost" onClick={() => { setMetaSel(null); setObjSel(null); }}><X size={14} /></button>
+          </div>
+          <div className="moac-objs">
+            {objetivos.filter(o => o.meta_id === metaAbierta.meta_id).map(o => {
+              const sem = moacSemaforo(o);
+              const ts = (porObjetivo[o.objetivo_id] || []).filter(t => !t.borrada);
+              const abiertas = ts.filter(t => normalizeEstado(t.estado) !== "Terminado").length;
+              const on = objSel === o.objetivo_id;
+              return (
+                <div key={o.objetivo_id} className={`moac-obj moac-sem-${sem} ${on ? "on" : ""}`}>
+                  <button className="moac-obj-main" onClick={() => setObjSel(on ? null : o.objetivo_id)}>
+                    <span className="moac-dot" />
+                    <span className="moac-obj-id">{o.objetivo_id}</span>
+                    <span className="moac-obj-txt">{o.texto}</span>
+                    <span className="moac-obj-meta">{o.dueno || ""}{o.fecha ? ` · ${moacFechaCorta(o.fecha)}` : ""} · {ts.length ? `${abiertas} abierta${abiertas === 1 ? "" : "s"} / ${ts.length}` : <b className="moac-cero">sin tareas</b>}</span>
+                  </button>
+                  <select className="moac-estado" value={o.estado || "Pendiente"} onChange={e => onObjetivoEstado(o.objetivo_id, e.target.value)} title="Estado del objetivo">
+                    {["Pendiente", "En proceso", "Cerrado", "Cancelado"].map(x => <option key={x}>{x}</option>)}
+                  </select>
+                  {on && (
+                    <div className="moac-obj-body">
+                      {o.okr && <div className="moac-det-sub"><b>OKR:</b> {o.okr}</div>}
+                      {o.notas && <div className="moac-det-sub">{o.notas}</div>}
+                      {tareasObj.length ? (
+                        <ul className="moac-tareas">
+                          {tareasObj.map(t => (
+                            <li key={t.id}>
+                              <button className="moac-tarea" onClick={() => onOpenTask(t.id)}>
+                                <EstadoChip estado={t.estado} mini /> <span className="moac-tarea-id">{t.id}</span> {t.actividad}
+                                <span className="moac-tarea-meta"> · {t.responsable}{t.fecha ? ` · ${t.mes || ""} ${t.fecha}` : ""}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <div className="moac-det-sub moac-cero">Este objetivo no tiene ninguna tarea en el board. Crea la primera acción o liga una existente desde su subboard.</div>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {verSin && (
+        <div className="moac-detalle">
+          <div className="moac-det-head">
+            <div>
+              <div className="yo-eyebrow">Tareas abiertas sin objetivo · {sinObjetivo.length}</div>
+              <div className="moac-det-sub">Regla D.2: una tarea entra a la semana solo si cierra un objetivo. Elige a qué objetivo sirve cada una, o archívala el lunes.</div>
+            </div>
+            <button className="btn-ghost" onClick={() => setVerSin(false)}><X size={14} /></button>
+          </div>
+          <ul className="moac-tareas">
+            {sinObjetivo.sort((a, b) => (daysUntil(a) ?? 9999) - (daysUntil(b) ?? 9999)).map(t => (
+              <li key={t.id} className="moac-sin-row">
+                <button className="moac-tarea" onClick={() => onOpenTask(t.id)}><EstadoChip estado={t.estado} mini /> <span className="moac-tarea-id">{t.id}</span> {t.actividad}<span className="moac-tarea-meta"> · {t.responsable} · {t.proyecto}{t.fecha ? ` · ${t.mes || ""} ${t.fecha}` : ""}</span></button>
+                <select className="moac-estado" value="" onChange={e => { if (e.target.value) onAssign(t.id, e.target.value); }}>
+                  <option value="">ligar a…</option>
+                  {metas.map(m => (
+                    <optgroup key={m.meta_id} label={`${m.meta_id} · ${String(m.texto || "").slice(0, 50)}`}>
+                      {objetivos.filter(o => o.meta_id === m.meta_id && o.estado !== "Cancelado").map(o => <option key={o.objetivo_id} value={o.objetivo_id}>{o.objetivo_id} · {String(o.texto || "").slice(0, 60)}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -2805,6 +3026,58 @@ function GlobalStyles() {
       .yo-theme { font-family:'Instrument Sans','Manrope', system-ui, -apple-system, sans-serif; color: #F1EDE3; -webkit-font-smoothing: antialiased; }
       .yo-display { font-family: 'Instrument Serif', Georgia, serif; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; }
       .yo-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #8A8272; }
+
+      /* ---- MOAC ---- */
+      .moac-wrap { margin: 0 0 0.9rem; padding: 0.7rem 0.9rem 0.8rem; }
+      .moac-head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; }
+      .moac-toggle { background: transparent; border: none; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 0.15rem; padding: 0; color: inherit; }
+      .moac-sub { font-size: 0.72rem; color: #8A8272; }
+      .moac-actions { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+      .moac-chip { border-radius: 999px; padding: 0.3rem 0.75rem; font-size: 0.72rem; font-weight: 800; cursor: pointer; border: 1px solid transparent; }
+      .moac-chip-alerta { background: rgba(224,96,90,.14); color: #E0605A; border-color: rgba(224,96,90,.4); }
+      .moac-chip-ok { background: rgba(125,155,90,.14); color: #6f8f4e; border-color: rgba(125,155,90,.35); }
+      .moac-err { color: #E0605A; font-size: 0.72rem; }
+      .moac-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0.55rem; margin-top: 0.7rem; }
+      .moac-meta { text-align: left; background: rgba(0,0,0,.03); border: 1px solid rgba(0,0,0,.08); padding: 0.6rem 0.65rem; cursor: pointer; color: inherit; display: flex; flex-direction: column; gap: 0.25rem; transition: border-color .15s, transform .15s; }
+      .moac-meta:hover { border-color: #B98B3C; transform: translateY(-1px); }
+      .moac-meta.on { border-color: #B98B3C; box-shadow: inset 0 0 0 1px #B98B3C; }
+      .moac-meta.principal { border-left: 3px solid #B98B3C; }
+      .moac-meta-top { display: flex; justify-content: space-between; font-size: 0.66rem; color: #8A8272; font-weight: 800; letter-spacing: .06em; }
+      .moac-meta-txt { font-size: 0.78rem; line-height: 1.3; font-weight: 600; }
+      .moac-meta-meta { font-size: 0.66rem; color: #8A8272; }
+      .moac-bar { height: 6px; background: rgba(0,0,0,.08); overflow: hidden; }
+      .moac-bar-t { height: 3px; opacity: .7; }
+      .moac-bar-fill { height: 100%; background: #B98B3C; }
+      .moac-bar-l { font-size: 0.64rem; color: #8A8272; }
+      .moac-detalle { margin-top: 0.7rem; border-top: 1px dashed rgba(0,0,0,.12); padding-top: 0.6rem; }
+      .moac-det-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.6rem; }
+      .moac-det-txt { font-size: 0.9rem; font-weight: 700; margin: 0.15rem 0 0.2rem; }
+      .moac-det-sub { font-size: 0.72rem; color: #6d675b; margin-top: 0.15rem; }
+      .moac-objs { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
+      .moac-obj { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0.4rem; border: 1px solid rgba(0,0,0,.08); padding: 0.35rem 0.5rem; }
+      .moac-obj.on { border-color: #B98B3C; }
+      .moac-obj-main { display: flex; align-items: center; gap: 0.45rem; background: transparent; border: none; text-align: left; cursor: pointer; color: inherit; padding: 0; min-width: 0; flex-wrap: wrap; }
+      .moac-dot { width: 9px; height: 9px; border-radius: 50%; background: #999; flex-shrink: 0; }
+      .moac-sem-rojo .moac-dot { background: #E0605A; } .moac-sem-ambar .moac-dot { background: #D9A441; } .moac-sem-verde .moac-dot { background: #7D9B5A; } .moac-sem-ok .moac-dot { background: #4f7f3a; box-shadow: 0 0 0 2px rgba(79,127,58,.25); } .moac-sem-off .moac-dot { background: #bbb; }
+      .moac-obj-id { font-size: 0.66rem; font-weight: 800; color: #8A8272; letter-spacing: .05em; }
+      .moac-obj-txt { font-size: 0.78rem; font-weight: 600; }
+      .moac-obj-meta { font-size: 0.66rem; color: #8A8272; }
+      .moac-cero { color: #E0605A; }
+      .moac-estado { font-size: 0.68rem; padding: 0.2rem 0.35rem; border: 1px solid rgba(0,0,0,.12); background: transparent; color: inherit; max-width: 200px; }
+      .moac-obj-body { grid-column: 1 / -1; padding: 0.3rem 0 0.2rem 1.1rem; }
+      .moac-tareas { list-style: none; margin: 0.35rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+      .moac-tarea { background: transparent; border: none; text-align: left; cursor: pointer; color: inherit; font-size: 0.76rem; padding: 0.15rem 0; }
+      .moac-tarea:hover { color: #B98B3C; }
+      .moac-tarea-id { font-size: 0.64rem; color: #8A8272; font-weight: 800; }
+      .moac-tarea-meta { color: #8A8272; font-size: 0.68rem; }
+      .moac-sin-row { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; align-items: center; border-bottom: 1px dashed rgba(0,0,0,.08); padding: 0.15rem 0; }
+      .dark .moac-meta { background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.1); }
+      .dark .moac-bar { background: rgba(255,255,255,.1); }
+      .dark .moac-detalle { border-top-color: rgba(255,255,255,.14); }
+      .dark .moac-obj, .dark .moac-estado { border-color: rgba(255,255,255,.12); }
+      .dark .moac-det-sub { color: #b9b1a1; }
+      .dark .moac-sin-row { border-bottom-color: rgba(255,255,255,.1); }
+      .dark .moac-estado option { color: #111; }
       .brand-shell { background: linear-gradient(rgba(255,255,255,.012) 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(90deg, rgba(255,255,255,.012) 1px, transparent 1px) 0 0 / 60px 60px, #17140F; }
       .yo-btn-primary { display: inline-flex; align-items: center; gap: 0.4rem; background: #B98B3C; color: #17140F; padding: 0.5rem 0.9rem; font-size: 0.78rem; font-weight: 600; transition: background 0.15s; border: none; cursor: pointer; }
       .yo-btn-primary:hover { background: #D8AE5E; }
