@@ -22,6 +22,8 @@ import {
    por eso una sesión de Google veía "este tablero no validó tu acceso". Los
    dos Sheets quedaron idénticos (124 tareas), no hubo nada que volcar. */
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyZ1p7rGHuU01vWBbynGdmlKTnlyH9CIXyhKivqLHa4rLxcHNneJKsZHv7smnjLsfH1/exec";
+// Endpoint aparte para el MOAC (GAS standalone; valida con el mismo Portero).
+const MOAC_EXEC_URL = "https://script.google.com/macros/s/AKfycbxzff4KLtAaTTyrHM220BoI31EFKZOA5uezs59Z0MefY1uShq4UjlGV7RZJUiA5D14V/exec";
 const PORTERO_LSK = "pyod_clave_v1";   // credencial que escribe portero.js
 function credencial() { try { return localStorage.getItem(PORTERO_LSK) || ""; } catch { return ""; } }
 const PYOD_EXEC = "https://script.google.com/macros/s/AKfycbwlDDCWWzOWYZsUpBU9uqsQ7aenQ469PF6s6FkNlBFS1_cJSU5njG9oQmuyELy5zlqzFg/exec";
@@ -422,10 +424,11 @@ function buildMonthMatrix(year, month) {
 // ===================================================================
 async function apiCall(action, payload = {}) {
   if (!APPS_SCRIPT_URL) throw new Error("Backend en reconexión: falta la URL /exec en APPS_SCRIPT_URL");
+  const url = action.indexOf("moac") === 0 ? MOAC_EXEC_URL : APPS_SCRIPT_URL;
   const body = JSON.stringify({ k: credencial(), action, ...payload });
   let res;
   try {
-    res = await fetch(APPS_SCRIPT_URL, { method: "POST", body, headers: { "Content-Type": "text/plain;charset=utf-8" }, redirect: "follow", credentials: "omit" });
+    res = await fetch(url, { method: "POST", body, headers: { "Content-Type": "text/plain;charset=utf-8" }, redirect: "follow", credentials: "omit" });
   } catch (netErr) { throw new Error(`Red/CORS: ${netErr.message}`); }
   if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(`HTTP ${res.status}: ${txt.slice(0, 120)}`); }
   const text = await res.text();
