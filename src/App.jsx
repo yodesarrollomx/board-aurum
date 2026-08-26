@@ -1758,7 +1758,7 @@ function DecisionCenter({ tasks, addComentario, updateTaskField }) {
     // corrió y qué está ejecutando YodBot — el silencio no informa.
     return (
       <div style={{ display: "flex", justifyContent: "flex-end", margin: "0 0 0.8rem" }}>
-        <span style={{ background: "rgba(125,155,90,0.14)", color: "#9db87a", border: "1px solid rgba(125,155,90,0.35)", borderRadius: 999, padding: "0.35rem 0.9rem", fontWeight: 700, fontSize: "0.74rem" }}>
+        <span className="chip-decision-ok" style={{ background: "rgba(125,155,90,0.14)", border: "1px solid rgba(125,155,90,0.35)", borderRadius: 999, padding: "0.35rem 0.9rem", fontWeight: 700, fontSize: "0.74rem" }}>
           🗒 Centro de Decisión: sin pendientes hoy{enEjecucionCount ? ` · YodBot ejecuta ${enEjecucionCount}` : ""}
         </span>
       </div>
@@ -3112,7 +3112,6 @@ function GlobalStyles() {
       .view-selector { display: inline-flex; gap: 3px; border: 1px solid rgba(255,255,255,.12); background: #221E17; }
       .vs-btn { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.5rem 0.7rem; font-size: 0.72rem; font-weight: 600; color: #b6b3aa; background: transparent; border: none; border-radius: 9px; cursor: pointer; }
       .vs-btn:hover { background: rgba(255,255,255,.07); }
-      .vs-btn.on { background: rgba(154,123,63,.2); color: #ead8b5; }
 
       /* Archive toggle + overdue counter + metrics toolbar */
       .archive-toggle { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.45rem 0.7rem; font-size: 0.72rem; font-weight: 600; border: 1px solid rgba(255,255,255,.12); background: #221E17; cursor: pointer; }
@@ -3483,7 +3482,7 @@ function GlobalStyles() {
       .dark .yo-display, .dark .persona-column-name, .dark .proj-row-name, .dark .kanban-card-title, .dark .estado-card-title, .dark .cal-title, .dark .metric-value { color: #F1EDE3; }
       .dark .input { background: #17140F; border-color: rgba(255,255,255,.09); color: #F1EDE3; }
       .dark .yo-btn-secondary, .dark .archive-toggle, .dark .vs-btn, .dark .cal-nav-btn { background: #221E17; border-color: rgba(255,255,255,.09); color: #F1EDE3; }
-      .vs-btn.on { background: rgba(154,123,63,.2); color: #ead8b5; }
+      .dark .vs-btn.on { background: rgba(154,123,63,.25); color: #ead8b5; }
       .dark .proyecto-tile-kanban, .dark .proj-row-body, .dark .persona-column-header, .dark .cal-cell { background: #1C1811; }
       .dark .cal-cell-empty { background: transparent; }
       .dark .yo-btn-primary { background: #B98B3C; color: #17140F; }
@@ -3864,7 +3863,11 @@ function GlobalStyles() {
       .yo-display, .persona-column-name, .proj-row-name, .kanban-card-title, .estado-card-title, .cal-title, .metric-value, .ms-h2 { color: #231d14; }
       .input, .login-input { background: #ffffff; border-color: #e1dacb; color: #231d14; }
       .yo-btn-secondary, .archive-toggle, .vs-btn, .cal-nav-btn { background: #ffffff; border-color: #e1dacb; color: #231d14; }
-      .vs-btn.on { background: rgba(154,123,63,.2); color: #5b4a24; }
+      .view-selector { background: #ffffff; border-color: #e1dacb; }
+      .vs-btn { color: #6d6455; }
+      .vs-btn.on { background: rgba(154,123,63,.22); color: #5b4a24; }
+      .metrics-toolbar button { background: #ffffff; border-color: #e1dacb; color: #6d6455; }
+      .metrics-toolbar button.on { background: #9a7b3f; color: #ffffff; border-color: #9a7b3f; }
       .proyecto-tile-kanban, .proj-row-body, .persona-column-header, .cal-cell, .form-derived { background: #f1ede3; }
       .form-derived, .ms-sub, .btn-ghost, .tl-month, .tl-row-pct, .tl-legend, .diag-task-entregable { color: #766f62; }
       .cal-cell-empty { background: transparent; }
@@ -3877,6 +3880,88 @@ function GlobalStyles() {
       .tl-bar { background: rgba(35,29,20,.08); }
       .tl-bar-fill { background: #9a7b3f; }
       .tl-dot { border-color: #ffffff; }
+      /* ── Cara clara · barrido enjambre 25-ago (hallazgos confirmados) ── */
+      .risk-pct { color: #57503f; }
+      .risk-meta, .risk-meta .dot { color: #6d6455; }
+      .progress, .dash-avance-bar { background: rgba(35,29,20,.10); }
+      .overdue-counter, .overdue-pill { background: rgba(169,68,56,.10); color: #a94438; border-color: rgba(169,68,56,.45); }
+      .urgent-count { color: #a94438; }
+      .kanban-count, .estado-col-count, .dash-metric, .cal-count { background: rgba(35,29,20,.07); color: #231d14; }
+      .est-en-proceso { color: #8a5f18; } .est-en-standby, .est-en-revision { color: #33567d; }
+      .est-terminado { color: #2e7d44; } .est-pendiente { color: #57503f; }
+      .pri-chip-alta { color: #a94438; } .pri-chip-media { color: #8a5f18; } .pri-chip-baja { color: #57503f; }
+      .badge-saving, .badge-idle { color: #57503f; } .badge-saved { color: #2e7d44; }
+      .archivada-pill { color: #57503f; background: rgba(35,29,20,.07); }
+      .stat-proc, .kanban-col-en-proceso .kanban-col-header, .diagnostic-banner { color: #8a5f18; }
+      .stat-pen, .kanban-col-pendiente .kanban-col-header { color: #57503f; }
+      .ms-row { background: #ffffff; border-color: #e1dacb; }
+      .ms-row:hover { border-color: #231d14; }
+      .cal-task { background: #f1ede3; color: #231d14; }
+      .confirm-cancel { color: #57503f; }
+      .diag-insight, .diag-action, .dash-diag-action { color: #231d14; }
+      .btn-ghost:hover { background: rgba(35,29,20,.06); color: #231d14; }
+      .input:focus, .login-input:focus { border-color: #9a7b3f; }
+      .ai-model-badge { color: #57503f; }
+      .metric-card.metric-pendiente { background: #f3efe6; } .metric-card.metric-proceso { background: #f3e8d2; }
+      .metric-card.metric-standby { background: #e8ecf2; } .metric-card.metric-terminadas { background: #e7efe4; }
+      .metric-card .metric-label, .metric-card .metric-value { color: #231d14; }
+
+      /* ============ GEMELOS OSCUROS (enjambre 25-ago) ============ */
+      /* Todo lo que la BASE CLARA pinta sin guardia se restaura aquí para .dark:
+         estas reglas van AL FINAL a propósito — ganan por especificidad (.dark). */
+      .dark .view-selector { background: #221E17; border-color: rgba(255,255,255,.12); }
+      .dark .vs-btn { color: #b6b3aa; }
+      .dark .metrics-toolbar button { background: #221E17; border-color: rgba(255,255,255,.12); color: #b6b3aa; }
+      .dark .metrics-toolbar button.on { background: rgba(154,123,63,.25); color: #ead8b5; border-color: rgba(255,255,255,.12); }
+      .dark .ms-toolbar, .dark .ms-section, .dark .timeline-view, .dark .diag-box, .dark .trash-box { background: #221E17; border-color: rgba(255,255,255,.09); color: #F1EDE3; }
+      .dark .ms-row { background: #221E17; border-color: rgba(255,255,255,.09); }
+      .dark .ms-row:hover { border-color: #F1EDE3; }
+      .dark .ms-h2 { color: #F1EDE3; }
+      .dark .ms-sub, .dark .btn-ghost, .dark .form-derived, .dark .tl-month, .dark .tl-row-pct, .dark .tl-legend, .dark .diag-task-entregable { color: #8A8272; }
+      .dark .archive-toggle-cnt, .dark .brief-lbl-cnt { background: #F1EDE3; color: #17140F; }
+      .dark .yo-btn-primary { background: #B98B3C; color: #17140F; }
+      .dark .tl-axis-track { border-bottom-color: rgba(255,255,255,.09); }
+      .dark .tl-row { border-bottom-color: rgba(255,255,255,.06); }
+      .dark .tl-legend { border-top-color: rgba(255,255,255,.09); }
+      .dark .tl-bar { background: rgba(255,255,255,.10); }
+      .dark .tl-bar-fill { background: rgba(255,255,255,.25); }
+      .dark .tl-bar-critico { background: rgba(224,96,90,.35); } .dark .tl-bar-critico .tl-bar-fill { background: #E0605A; }
+      .dark .tl-bar-riesgo { background: rgba(217,164,91,.35); } .dark .tl-bar-riesgo .tl-bar-fill { background: #D9A45B; }
+      .dark .tl-bar-atencion { background: rgba(91,142,221,.35); } .dark .tl-bar-atencion .tl-bar-fill { background: #5B8EDD; }
+      .dark .tl-bar-ok { background: rgba(143,191,139,.35); } .dark .tl-bar-ok .tl-bar-fill { background: #8FBF8B; }
+      .dark .tl-dot { border-color: #221E17; }
+      .dark .risk-pct { color: #b6b3aa; }
+      .dark .risk-meta, .dark .risk-meta .dot { color: #8A8272; }
+      .dark .progress, .dark .dash-avance-bar { background: rgba(255,255,255,.09); }
+      .dark .overdue-counter, .dark .overdue-pill { background: rgba(224,96,90,.16); color: #E0605A; border-color: rgba(224,96,90,.45); }
+      .dark .urgent-count { color: #E0605A; }
+      .dark .kanban-count, .dark .estado-col-count, .dark .dash-metric, .dark .cal-count { background: rgba(255,255,255,.08); color: #F1EDE3; }
+      .dark .est-en-proceso { color: #D9A45B; } .dark .est-en-standby, .dark .est-en-revision { color: #5B8EDD; }
+      .dark .est-terminado { color: #8FBF8B; } .dark .est-pendiente { color: #b6b3aa; }
+      .dark .pri-chip-alta { color: #E0605A; } .dark .pri-chip-media { color: #D9A45B; } .dark .pri-chip-baja { color: #b6b3aa; }
+      .dark .badge-saving, .dark .badge-idle { color: #b6b3aa; } .dark .badge-saved { color: #8FBF8B; }
+      .dark .archivada-pill { color: #b6b3aa; background: rgba(255,255,255,.08); }
+      .dark .stat-proc, .dark .kanban-col-en-proceso .kanban-col-header, .dark .diagnostic-banner { color: #D9A45B; }
+      .dark .stat-pen, .dark .kanban-col-pendiente .kanban-col-header { color: #9b988f; }
+      .dark .cal-task { background: #1C1811; color: #F1EDE3; }
+      .dark .confirm-cancel { color: #b6b3aa; }
+      .dark .diag-insight, .dark .diag-action, .dark .dash-diag-action { color: #F1EDE3; }
+      .dark .btn-ghost:hover { background: rgba(255,255,255,.07); color: #F1EDE3; }
+      .dark .input:focus, .dark .login-input:focus { border-color: #B98B3C; }
+      .dark .ai-model-badge { color: #b6b3aa; }
+      .dark .metric-card.metric-pendiente, .dark .metric-card.metric-proceso, .dark .metric-card.metric-standby, .dark .metric-card.metric-terminadas { background: #221E17; }
+      .dark .metric-card.metric-proceso { background: rgba(217,164,91,.14); }
+      .dark .metric-card.metric-standby { background: rgba(91,142,221,.12); }
+      .dark .metric-card.metric-terminadas { background: rgba(143,191,139,.12); }
+      .dark .metric-card .metric-label, .dark .metric-card .metric-value { color: #F1EDE3; }
+      .dark .chip-decision-ok { color: #9db87a; }
+      .chip-decision-ok { color: #48651f; }
+      /* Contraataque al portero: su CSS pinta TODO header crema con !important
+         ([data-tema="claro"] header, portero.js:291) y el shell siempre es
+         data-tema=claro — en board oscuro dejaba la tarjeta del encabezado
+         blanca con texto crema. Misma arma, mayor especificidad. */
+      .dark.brand-shell header, .dark .yo-theme header { background: #221E17 !important; border-bottom-color: rgba(255,255,255,.09) !important; box-shadow: none !important; }
+      .dark.brand-shell header img, .dark .yo-theme header img { filter: brightness(0) invert(1) opacity(.9) !important; }
 
     `}</style>
   );
