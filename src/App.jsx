@@ -426,12 +426,33 @@ async function apiCall(action, payload = {}) {
   if (!APPS_SCRIPT_URL) throw new Error("Backend en reconexión: falta la URL /exec en APPS_SCRIPT_URL");
   const url = action.indexOf("moac") === 0 ? MOAC_EXEC_URL : APPS_SCRIPT_URL;
   const body = JSON.stringify({ k: credencial(), action, ...payload });
-  let res;
-  try {
-    res = await fetch(url, { method: "POST", body, headers: { "Content-Type": "text/plain;charset=utf-8" }, redirect: "follow", credentials: "omit" });
-  } catch (netErr) { throw new Error(`Red/CORS: ${netErr.message}`); }
-  if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(`HTTP ${res.status}: ${txt.slice(0, 120)}`); }
-  const text = await res.text();
+  // Google contesta un POST con un 302 a script.googleusercontent.com/macros/echo,
+  // y esa direccion SIRVE UNA SOLA VEZ (comprobado 10-sep: la 1a lectura da 200,
+  // la 2a da 302 al login). En el celular el navegador a veces la pide dos veces
+  // o con la sesion de Google puesta, y lo que llega es su pagina 404 en HTML:
+  // el tablero se quedaba en ceros con «HTTP 404: <!DOCTYPE html>…».
+  // Se reintenta con un POST nuevo (una direccion nueva) — PERO solo en acciones
+  // que se pueden repetir sin dano. El 404 llega DESPUES de que Google ya ejecuto
+  // la accion: reintentar un «create» duplicaria la tarjeta.
+  const REPETIBLE = ["getAll", "ping", "checkkey", "moac", "update", "setResponsableColor", "moacSet"];
+  const intentos = REPETIBLE.includes(action) ? 3 : 1;
+  let text = "", ultimoError = null;
+  for (let i = 0; i < intentos; i++) {
+    if (i) await new Promise((ok) => setTimeout(ok, 700 * i));
+    let res;
+    try {
+      res = await fetch(url, { method: "POST", body, headers: { "Content-Type": "text/plain;charset=utf-8" }, redirect: "follow", credentials: "omit", cache: "no-store" });
+    } catch (netErr) { ultimoError = new Error(`Red/CORS: ${netErr.message}`); continue; }
+    const t = await res.text().catch(() => "");
+    const esHtml = /^\s*</.test(t);
+    if (res.ok && !esHtml) { text = t; ultimoError = null; break; }
+    ultimoError = new Error(
+      REPETIBLE.includes(action)
+        ? "Google no devolvió la respuesta (su enlace de un solo uso falló). Reintenté " + intentos + " veces; recarga en un momento."
+        : "Google no devolvió la respuesta, pero el cambio pudo haberse guardado. Recarga el tablero ANTES de volver a intentarlo, para no duplicarlo."
+    );
+  }
+  if (ultimoError) throw ultimoError;
   let data;
   try { data = JSON.parse(text); } catch { throw new Error(`Respuesta no es JSON: ${text.slice(0, 200)}`); }
   if (!data.ok) {
