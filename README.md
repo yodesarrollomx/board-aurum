@@ -1,30 +1,21 @@
-# Board Aurum · YoDesarrollo
+# MOAC · Operación semanal (board-aurum)
 
-Dashboard operativo sincronizado desde Google Sheets.
+Tablero de tareas semanales de Yo Desarrollo / Aurum. Código de acceso **`TA`**
+(ver `yod-portal/CODIGOS-BOARDS.md`). No confundir con **`aurum-board`**, que es el
+tablero de Métricas del embudo comercial (`MK`).
 
 ## URL en vivo
-https://alexpueblag.github.io/board-aurum/
+https://yodesarrollomx.github.io/board-aurum/ (la casa vieja `alexpueblag.github.io` solo reenvía).
 
-## Editar tareas
-Edita el Sheet de control. Los cambios aparecen en el board en maximo 10-15 minutos.
+## Cómo fluyen los datos
+El board (React + Vite, `src/App.jsx`) lee y escribe **directo** al Apps Script de
+Operación (`APPS_SCRIPT_URL`, `src/App.jsx:24`), el mismo que usa el Pulso de YOD OS
+(`yod-portal/os/adapters/operations.js`). El Sheet es el único almacén: lo que ves es lo
+que el Sheet confirma. No hay `data.json` público ni sincronización desde la Mac
+(`scripts/sync_sheet.*` son históricos).
 
-## Sync manual
-```bash
-cd ~/board-aurum
-python3 scripts/sync_sheet.py
-```
+Publicación: `.github/workflows/deploy.yml` construye y publica en Pages en cada push a `main`.
 
-## Ver logs
-```bash
-tail -f ~/board-aurum/.sync-logs/sync-*.log
-```
-
-## Acceso (Portero YOD)
-El acceso lo gobierna el **Portero YOD** (liga mágica de 90 días, clave de equipo o Google).
-Cada petición al Apps Script viaja con la credencial (`k`) y el servidor la valida; el código
-público ya no contiene secretos y el `data.json` con tareas reales se retiró del repo.
-
-**Reconexión pendiente (una vez):** parchar el Apps Script para exigir `credencialValida_(k)`
-(ver `apps-script/portero-auth.gs` de board-flujo-yod como referencia, board=TA), crear una
-implementación NUEVA (la anterior está comprometida: su secreto estaba publicado), pegar la
-URL `/exec` en `APPS_SCRIPT_URL` de `src/App.jsx`, y marcar SYS-TAREAS como Activo en Control Maestro.
+## Acceso
+Entrar con Google a través del **Portero YOD** (`potenciales-yod/portero.js`). Cada petición
+lleva la credencial (`k`) y el Apps Script la valida con `board=TA`; sin ella no entrega datos.
