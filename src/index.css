@@ -32,3 +32,10 @@ textarea:focus-visible, [role="button"]:focus-visible, [tabindex]:focus-visible 
   .yo-btn-primary, .yo-btn-secondary, .yo-btn-danger { min-height: 44px; }
   select, .input { min-height: 44px; }
 }
+
+/* Fase 3 · folio */
+.folio-tag{display:inline-block;font-size:9.5px;letter-spacing:.06em;font-weight:700;padding:1px 5px;border-radius:4px;background:rgba(154,123,63,.14);color:#8a6a2f;vertical-align:middle;margin-right:2px}
+.folio-tag-sin{background:rgba(220,38,38,.10);color:#b91c1c;font-weight:600}
+.dup-banner{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:10px;border:1px solid rgba(217,119,6,.35);background:rgba(217,119,6,.08);font-size:13px}
+.dup-row{margin-top:4px}
+.dup-btn{font:inherit;font-size:11px;font-weight:700;border:1px solid rgba(217,119,6,.45);border-radius:6px;padding:1px 6px;margin-right:4px;background:transparent;cursor:pointer}

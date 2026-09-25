@@ -382,6 +382,21 @@ function calcProjectMetrics(tasksInProject) {
   else if (soon >= 2) risk = "atencion";
   return { total, term, overdue, soon, pct, risk, openTotal };
 }
+/* Fase 3 · folio: el registro oficial vive en yod-portal/os/proyectos.js
+   (window.YodProyectos, cargado en index.html). Si no cargó, todo sigue igual. */
+function folioDe(proyecto) { try { return (window.YodProyectos && window.YodProyectos.folio(proyecto)) || ""; } catch { return ""; } }
+function FolioTag({ proyecto }) {
+  const f = folioDe(proyecto);
+  return f ? <span className="folio-tag" title={`Folio ${f} · ${proyecto}`}>{f.replace(/^PRJ-/, "")}</span>
+           : (proyecto ? <span className="folio-tag folio-tag-sin" title="Proyecto sin folio: darlo de alta en PROYECTOS del Control Maestro">sin folio</span> : null);
+}
+function calcDuplicadas(tasks) {
+  try {
+    const RP = window.YodProyectos; if (!RP) return [];
+    const abiertas = tasks.filter(t => !t.archivada && !t.borrada && t.estado !== "Terminado");
+    return RP.duplicados(abiertas);
+  } catch { return []; }
+}
 function calcWeekStats(tasks) {
   const today = new Date();
   const weekAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7);
@@ -395,7 +410,9 @@ function calcWeekStats(tasks) {
     return t.actualizado && new Date(t.actualizado) >= weekAgo;
   }).length;
   const vencenSemana = tasks.filter(t => { const d = daysUntil(t); return t.estado !== "Terminado" && d != null && d >= 0 && d <= 7; }).length;
-  return { terminadasSemana, revisionSemana, vencenSemana };
+  const atrasadas = tasks.filter(t => !t.archivada && isOverdue(t)).length;
+  const nuevasSemana = tasks.filter(t => t.creado && new Date(t.creado) >= weekAgo).length;
+  return { terminadasSemana, revisionSemana, vencenSemana, atrasadas, nuevasSemana };
 }
 function calcMetricsFor(list) {
   const total = list.length;
@@ -1202,6 +1219,7 @@ function Board({ onLogout }) {
   const overdueCount = useMemo(() => filteredTasks.filter(isOverdue).length, [filteredTasks]);
 
   const weekStats = useMemo(() => calcWeekStats(tasks), [tasks]);
+  const duplicadas = useMemo(() => calcDuplicadas(tasks), [tasks]);
   const riskyProjects = useMemo(() => projectsList.filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo").slice(0, 4), [projectsList]);
 
   const selectedTask = useMemo(() => tasks.find(t => t.id === selectedTaskId) || null, [tasks, selectedTaskId]);
@@ -1240,7 +1258,7 @@ function Board({ onLogout }) {
               <div>
                 <p className="yo-eyebrow">Subboard de tarea</p>
                 <h1 className="yo-display mt-1">{selectedTask.actividad}</h1>
-                <p className="mt-1 text-sm subtle">{selectedTask.proyecto} · {selectedTask.responsable}</p>
+                <p className="mt-1 text-sm subtle"><FolioTag proyecto={selectedTask.proyecto} /> {selectedTask.proyecto} · {selectedTask.responsable}</p>
                 <div className="mt-2 flex flex-wrap gap-1.5 items-center">
                   <EstadoChip estado={selectedTask.estado} />
                   <PrioridadChip prioridad={selectedTask.prioridad} />
@@ -1442,6 +1460,19 @@ function Board({ onLogout }) {
             <AlertCircle size={18} className="shrink-0" />
             <div><strong>No conecta al Sheet.</strong> {diagnostic.message}
               <div className="text-xs mt-1 opacity-80">Las lecturas siguen funcionando pero los cambios no se guardan. Verifica la URL del Apps Script.</div>
+            </div>
+          </div>
+        )}
+
+        {duplicadas.length > 0 && (
+          <div className="dup-banner mb-3">
+            <AlertCircle size={16} className="shrink-0" />
+            <div><strong>{duplicadas.length} {duplicadas.length === 1 ? "tarea parece repetida" : "tareas parecen repetidas"}</strong> (mismo proyecto, mismo texto, abiertas):
+              {duplicadas.slice(0, 6).map((g, i) => (
+                <div key={i} className="dup-row">{g.map(t => (
+                  <button key={t.id} className="dup-btn" onClick={() => setSelectedTaskId(t.id)} title={`${t.proyecto} · ${t.responsable}`}>{t.id}</button>
+                ))} <span className="subtle">«{String(g[0].actividad || "").slice(0, 70)}»</span></div>
+              ))}
             </div>
           </div>
         )}
@@ -2044,6 +2075,8 @@ function WeekBriefing({ stats, risky, onProjectClick, onProjectDiag }) {
           <BriefStat n={stats.terminadasSemana} label="terminadas" />
           <BriefStat n={stats.revisionSemana} label="a revisión" />
           <BriefStat n={stats.vencenSemana} label="vencen 7d" />
+          <BriefStat n={stats.atrasadas || 0} label="atrasadas" />
+          <BriefStat n={stats.nuevasSemana || 0} label="nuevas" />
         </div>
       </div>
       <div className="brief-divider" />
@@ -2224,7 +2257,7 @@ function KanbanCard({ task, onOpen, isDragging, setDraggingId, saveStatus, quick
           <SaveDot status={saveStatus} />
         </div>
       </div>
-      <h4 className="kanban-card-title">{task.actividad}</h4>
+      <h4 className="kanban-card-title"><FolioTag proyecto={task.proyecto} /> {task.actividad}</h4>
       <div className="kanban-card-bottom">
         <span>{done && task.fechaTerminado ? `✓ ${fechaTerminadoCorta(task.fechaTerminado)}` : fechaCorta(task)}</span>
         {!done && <DeadlineBadge task={task} compact />}
@@ -2275,7 +2308,7 @@ function TaskListRow({ task, onOpen, colorOverrides, quickArchive }) {
   return (
     <div className={`task-row ${task.archivada ? "archived" : ""} ${isOverdue(task) ? "row-overdue" : ""}`} onClick={onOpen}>
       <EstadoChip estado={task.estado} mini />
-      <div className="task-row-title">{task.actividad}{task.archivada && <Archive size={10} className="task-row-arch"/>}</div>
+      <div className="task-row-title"><FolioTag proyecto={task.proyecto} /> {task.actividad}{task.archivada && <Archive size={10} className="task-row-arch"/>}</div>
       <div className="task-row-asg"><PersonaAvatar name={task.responsable} size={18} colorOverrides={colorOverrides} /><span style={{ color: palette.text }}>{(task.responsable || "").split(" ")[0]}</span></div>
       <div className="task-row-date">{done && task.fechaTerminado ? `✓ ${fechaTerminadoCorta(task.fechaTerminado)}` : fechaCorta(task)}</div>
       <div className="task-row-due">{(done || task.estado === "En standby") ? (<button className="quick-archive-btn" title={task.archivada ? "Desarchivar" : "Archivar"} onClick={(e) => { e.stopPropagation(); quickArchive(task.id, !task.archivada); }}><Archive size={11}/></button>) : <DeadlineBadge task={task} compact />}</div>
@@ -2321,7 +2354,7 @@ function EstadoCard({ task, onOpen, isDragging, setDraggingId, saveStatus, color
     <article draggable onDragStart={(e) => { e.dataTransfer.setData("text/plain", task.id); e.dataTransfer.effectAllowed = "move"; setDraggingId(task.id); }}
       onDragEnd={() => setDraggingId(null)} onClick={() => onOpen(task.id)}
       className={`estado-card ${isDragging ? "dragging" : ""} ${task.archivada ? "archived" : ""} ${overdue ? "card-overdue" : ""} ${today ? "card-today" : ""}`} style={{ borderLeftColor: palette.main }}>
-      <div className="estado-card-top"><span className="estado-card-proj">{task.proyecto}</span><PrioridadDot prioridad={task.prioridad} /></div>
+      <div className="estado-card-top"><span className="estado-card-proj"><FolioTag proyecto={task.proyecto} /> {task.proyecto}</span><PrioridadDot prioridad={task.prioridad} /></div>
       <h4 className="estado-card-title">{task.actividad}</h4>
       <div className="estado-card-bottom">
         <div className="estado-card-asg"><PersonaAvatar name={task.responsable} size={16} colorOverrides={colorOverrides} /><span style={{ color: palette.text }}>{(task.responsable || "").split(" ")[0]}</span></div>
