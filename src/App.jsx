@@ -26,7 +26,7 @@ const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyZ1p7rGHuU01vW
 const MOAC_EXEC_URL = "https://script.google.com/macros/s/AKfycbzmbZu_PXJGqL4KnH1PmVjQTS4fhYePqmgxZr9AGFRu51biPxoKWUcaTCUe0BlzOOEa/exec";
 const PORTERO_LSK = "pyod_clave_v1";   // credencial que escribe portero.js
 function credencial() { try { return localStorage.getItem(PORTERO_LSK) || ""; } catch { return ""; } }
-const PYOD_EXEC = window.YOD_PORTERO.original;   // única copia: yod-portal/os/yod-acceso.js (cargada en index.html)
+const PYOD_EXEC = (window.YOD_PORTERO||{}).original;   // única copia: yod-portal/os/yod-acceso.js (cargada en index.html)
 function _pyodCerrar() {
   // Sesión inválida → dispositivo limpio: fuera credencial Y fuera caché de tareas
   // (el caché vive en el origen compartido; no debe sobrevivir a la sesión).
@@ -2198,7 +2198,7 @@ function ProyectoTileCompact({ proyecto, persona, empresa, index, tileKey, tasks
       <button onClick={onToggle} className="proyecto-tile-button" title={proyecto}>
         <div className="proyecto-tile-top">
           <span className="drag-handle" draggable onDragStart={handleDragStart} onDragEnd={handleDragEnd} onClick={e => e.stopPropagation()} title="Arrastra para reordenar">⋮⋮</span>
-          <Icon size={11} /><span className="proyecto-tile-name">{proyecto}</span>
+          <Icon size={11} /><FolioTag proyecto={proyecto} /><span className="proyecto-tile-name">{proyecto}</span>
           {altas > 0 && !expanded && <span className="alta-mini"><Zap size={8}/>{altas}</span>}
           {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
         </div>
