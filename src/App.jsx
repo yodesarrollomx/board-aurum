@@ -744,7 +744,9 @@ function Board({ onLogout }) {
   const [tasks, setTasks] = useState(() => {
     try { const c = localStorage.getItem(CACHE_KEY); return c ? JSON.parse(c) : []; } catch { return []; }
   });
-  const [filters, setFilters] = useState({ empresa: "Todas", proyecto: "Todos", responsable: "Todos", estado: "Todos", search: "" });
+  // TC-4 (26-sep): el tablero cenital abre MOAC con ?folio=PRJ-… y aquí llega ya filtrado.
+  const folioURL = (() => { try { return (new URLSearchParams(location.search).get("folio") || "").toUpperCase(); } catch { return ""; } })();
+  const [filters, setFilters] = useState({ empresa: "Todas", proyecto: "Todos", responsable: "Todos", estado: "Todos", search: "", folio: folioURL });
   const [quickFilter, setQuickFilter] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
@@ -1146,6 +1148,7 @@ function Board({ onLogout }) {
       if (!showArchived && t.archivada) return false;
       if (filters.empresa !== "Todas" && t.empresa !== filters.empresa) return false;
       if (filters.proyecto !== "Todos" && t.proyecto !== filters.proyecto) return false;
+      if (filters.folio && folioDe(t.proyecto) !== filters.folio) return false;
       if (filters.responsable !== "Todos" && t.responsable !== filters.responsable) return false;
       if (filters.estado !== "Todos" && t.estado !== filters.estado) return false;
       if (term) {
@@ -1542,6 +1545,9 @@ function Board({ onLogout }) {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             <Field label="Empresa"><select className="input" value={filters.empresa} onChange={e => setFilters({ ...filters, empresa: e.target.value })}><option>Todas</option>{EMPRESAS.map(e => <option key={e}>{e}</option>)}</select></Field>
+            {filters.folio && <button type="button" className="folio-tag" style={{alignSelf:"end",cursor:"pointer",border:0}} title="Quitar el filtro por folio"
+              onClick={() => { setFilters({ ...filters, folio: "" }); try { const u = new URL(location.href); u.searchParams.delete("folio"); history.replaceState(null, "", u); } catch {} }}>
+              Solo {filters.folio} ✕</button>}
             <Field label="Proyecto"><select className="input" value={filters.proyecto} onChange={e => setFilters({ ...filters, proyecto: e.target.value })}>{projects.map(p => <option key={p}>{p}</option>)}</select></Field>
             <Field label="Responsable"><select className="input" value={filters.responsable} onChange={e => setFilters({ ...filters, responsable: e.target.value })}>{responsables.map(r => <option key={r}>{r}</option>)}</select></Field>
             <Field label="Estado"><select className="input" value={filters.estado} onChange={e => setFilters({ ...filters, estado: e.target.value })}><option>Todos</option>{ESTADOS.map(s => <option key={s}>{s}</option>)}</select></Field>
