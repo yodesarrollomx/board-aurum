@@ -39,24 +39,26 @@ function _pyodCerrar() {
   try { sessionStorage.setItem("pyod_recargas", String(n + 1)); } catch {}
   window.location.reload();
 }
-function _pyodAviso() {
+function _pyodAviso(accion) {
   if (document.getElementById("pyodAviso")) return;
   const d = document.createElement("div");
   d.id = "pyodAviso";
   d.style.cssText = "position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:2147483000;max-width:min(560px,92vw);background:#221E17;color:#F1EDE3;border:1px solid rgba(255,255,255,.14);border-left:3px solid #B98B3C;border-radius:12px;padding:14px 16px;font-family:'Instrument Sans',system-ui,sans-serif;font-size:13px;line-height:1.5;box-shadow:0 18px 48px rgba(0,0,0,.5)";
-  d.innerHTML = '<b style="color:#B98B3C">Tu sesión es válida.</b> Este tablero no validó tu acceso: su backend (Apps Script) necesita re-desplegarse. Tu sesión NO se cerró. <a href="https://alexpueblag.github.io/yod-portal/os/" style="color:#B98B3C">Volver a YOD OS</a> · <button id="pyodAvX" style="background:none;border:0;color:#8A8272;cursor:pointer;text-decoration:underline;font:inherit">Ocultar</button>';
+  d.innerHTML = '<b style="color:#B98B3C">Tu sesión es válida.</b> Este tablero no validó tu acceso: su backend (Apps Script) necesita re-desplegarse' + (accion ? ' <span style="opacity:.6">(acción: ' + String(accion).replace(/[^a-zA-Z]/g, '') + ')</span>' : '') + '. Tu sesión NO se cerró. <a href="https://yodesarrollomx.github.io/yod-portal/os/" style="color:#B98B3C">Volver a YOD OS</a> · <button id="pyodAvX" style="background:none;border:0;color:#8A8272;cursor:pointer;text-decoration:underline;font:inherit">Ocultar</button>';
   document.body.appendChild(d);
   const x = document.getElementById("pyodAvX");
   if (x) x.onclick = () => d.remove();
 }
-function credencialRechazada() {
+function credencialRechazada(accion) {
+  // Un aviso por sesión basta: antes salía otra vez en cada recarga automática
+  try { if (sessionStorage.getItem("pyod_aviso_visto")) return; } catch {}
   let k = "";
   try { k = localStorage.getItem(PORTERO_LSK) || ""; } catch {}
   if (!k) return;   // sin token → esperar el gate del Portero; NUNCA recargar (esto causaba el bucle sin sesión)
   fetch(PYOD_EXEC + "?recurso=canje&t=" + encodeURIComponent(k), { credentials: "omit" })
     .then((r) => r.json())
-    .then((j) => { if (j && j.ok) _pyodAviso(); else _pyodCerrar(); })
-    .catch(() => _pyodAviso());
+    .then((j) => { if (j && j.ok) { try { sessionStorage.setItem("pyod_aviso_visto", accion || "1"); } catch {} _pyodAviso(accion); } else _pyodCerrar(); })
+    .catch(() => { try { sessionStorage.setItem("pyod_aviso_visto", accion || "1"); } catch {} _pyodAviso(accion); });
 }
 
 const ASSETS = {
@@ -492,7 +494,12 @@ async function apiCall(action, payload = {}) {
   let data;
   try { data = JSON.parse(text); } catch { throw new Error(`Respuesta no es JSON: ${text.slice(0, 200)}`); }
   if (!data.ok) {
-    if (data.error === "liga") credencialRechazada();
+    // El MOAC tiene su propio Apps Script: si ese rechaza la llave, se avisa en su panel
+    // (moacErr) y NO con el aviso global que tapaba el tablero cada 5 minutos.
+    if (data.error === "liga") {
+      if (action.indexOf("moac") === 0) throw new Error("el Apps Script del MOAC no reconoció tu llave (hay que re-desplegarlo con «Nueva versión»)");
+      credencialRechazada(action);
+    }
     throw new Error(data.error || "Error desconocido");
   }
   return data;
