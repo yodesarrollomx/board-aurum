@@ -2350,6 +2350,16 @@ function ProjectRow({ project, expanded, onToggle, setSelectedTaskId, colorOverr
         <div className="proj-row-progress"><ProgressBar pct={metrics.pct} risk={metrics.risk} /><div className="proj-row-pct">{metrics.pct}%</div></div>
         <div className="proj-row-chev">{expanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}</div>
       </button>
+      {expanded && (() => {
+        const vivas = project.tasks.filter(t => !t.archivada);
+        if (!vivas.length) return null;
+        return <div style={{ display: "flex", justifyContent: "flex-end", padding: "0.4rem 0.6rem 0" }}>
+          <button type="button" className="btn-ghost" style={{ fontSize: "0.75rem", fontWeight: 700 }}
+            onClick={() => { if (window.confirm(`¿Archivar el proyecto "${project.proyecto}"? Se archivan sus ${vivas.length} tareas (no se borran; se ven con «Ver archivadas»).`)) vivas.forEach(t => quickArchive(t.id, true)); }}>
+            <Archive size={12} style={{ display: "inline", marginRight: 4 }} />Archivar proyecto ({vivas.length})
+          </button>
+        </div>;
+      })()}
       {expanded && <div className="proj-row-body">{project.tasks.sort((a, b) => urgencyScore(a) - urgencyScore(b)).map(t => <TaskListRow key={t.id} task={t} onOpen={() => setSelectedTaskId(t.id)} colorOverrides={colorOverrides} quickArchive={quickArchive} />)}</div>}
     </div>
   );
