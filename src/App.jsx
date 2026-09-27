@@ -846,6 +846,7 @@ function Board({ onLogout }) {
     return "personas";
   }); // personas | proyectos | estados | calendario | timeline | misemana
   const [showArchived, setShowArchived] = useState(false);
+  const [showMas, setShowMas] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
@@ -1485,8 +1486,13 @@ function Board({ onLogout }) {
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-1.5 items-center">
+            <div className="hdr-row flex flex-wrap gap-1.5 items-center">
               <ViewSelector value={currentView} onChange={setCurrentView} />
+              <div className="hdr-main">
+                <button onClick={() => setShowForm(v => !v)} className="yo-btn-primary"><Plus size={14}/>Tarea</button>
+                <button onClick={() => setShowMas(v => !v)} className={`yo-btn-secondary hdr-mas ${showMas ? "on" : ""}`} aria-expanded={showMas}>{showMas ? <X size={13}/> : <Settings size={13}/>}{showMas ? "Cerrar" : "Más"}</button>
+              </div>
+              <div className={`hdr-tools ${showMas ? "open" : ""}`}>
               <label className="archive-toggle" title="Mostrar tareas archivadas">
                 <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />
                 {showArchived ? <Eye size={12}/> : <EyeOff size={12}/>}
@@ -1494,16 +1500,17 @@ function Board({ onLogout }) {
                 {archivedCount > 0 && <span className="archive-toggle-cnt">{archivedCount}</span>}
               </label>
               <button onClick={archiveAllDone} className="yo-btn-secondary" title="Archivar todas las terminadas"><Archive size={12}/>Limpiar</button>
-              <button onClick={() => setShowExport(true)} className="yo-btn-secondary icon-btn" title="Exportar / imprimir"><Printer size={12}/></button>
-              <button onClick={() => setShowTrash(true)} className="yo-btn-secondary icon-btn" title="Papelera" style={{ position: "relative" }}><Trash2 size={12}/>{trashedTasks.length > 0 && <span className="trash-cnt">{trashedTasks.length}</span>}</button>
-              <button onClick={() => setShowSettings(true)} className="yo-btn-secondary icon-btn" title="Ajustes de colores"><Settings size={12}/></button>
-              <button onClick={() => { if (window.confirm("¿Cerrar sesión y volver a pedir la palabra?")) { onLogout && onLogout(); } }} className="yo-btn-secondary icon-btn" title="Cerrar sesión"><LogOut size={12}/></button>
-              <button onClick={() => setShowAI(true)} className="yo-btn-secondary ai-trigger icon-btn" title="Asistente IA"><Sparkles size={12}/></button>
-              <button onClick={() => setPresenting(true)} className="yo-btn-secondary icon-btn" title="Modo presentación"><Play size={12}/></button>
-              <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} className="yo-btn-secondary icon-btn" title="Tema claro/oscuro">{theme === "dark" ? <Sun size={12}/> : <Moon size={12}/>}</button>
-              <button onClick={loadFromRemote} className="yo-btn-secondary" disabled={syncing} title="Forzar lectura"><RefreshCw size={12}/>{syncing ? "…" : ""}</button>
+              <button onClick={() => setShowExport(true)} className="yo-btn-secondary icon-btn" title="Exportar / imprimir"><Printer size={12}/><span className="lbl-m">Imprimir</span></button>
+              <button onClick={() => setShowTrash(true)} className="yo-btn-secondary icon-btn" title="Papelera" style={{ position: "relative" }}><Trash2 size={12}/><span className="lbl-m">Papelera</span>{trashedTasks.length > 0 && <span className="trash-cnt">{trashedTasks.length}</span>}</button>
+              <button onClick={() => setShowSettings(true)} className="yo-btn-secondary icon-btn" title="Ajustes de colores"><Settings size={12}/><span className="lbl-m">Colores</span></button>
+              <button onClick={() => { if (window.confirm("¿Cerrar sesión y volver a pedir la palabra?")) { onLogout && onLogout(); } }} className="yo-btn-secondary icon-btn" title="Cerrar sesión"><LogOut size={12}/><span className="lbl-m">Salir</span></button>
+              <button onClick={() => setShowAI(true)} className="yo-btn-secondary ai-trigger icon-btn" title="Asistente IA"><Sparkles size={12}/><span className="lbl-m">Asistente</span></button>
+              <button onClick={() => setPresenting(true)} className="yo-btn-secondary icon-btn" title="Modo presentación"><Play size={12}/><span className="lbl-m">Presentar</span></button>
+              <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} className="yo-btn-secondary icon-btn" title="Tema claro/oscuro">{theme === "dark" ? <Sun size={12}/> : <Moon size={12}/>}<span className="lbl-m">Tema</span></button>
+              <button onClick={loadFromRemote} className="yo-btn-secondary" disabled={syncing} title="Forzar lectura"><RefreshCw size={12}/><span className="lbl-m">{syncing ? "Leyendo…" : "Releer"}</span></button>
               <button onClick={() => setShowTemplate(v => !v)} className="yo-btn-secondary" title="Crear proyecto desde plantilla"><LayoutGrid size={12}/>Plantilla</button>
-              <button onClick={() => setShowForm(v => !v)} className="yo-btn-primary"><Plus size={14}/>Tarea</button>
+              <button onClick={() => setShowForm(v => !v)} className="yo-btn-primary hdr-tarea-desk"><Plus size={14}/>Tarea</button>
+              </div>
             </div>
           </div>
         </header>
@@ -2854,10 +2861,9 @@ function PresentActivity({ tasks, colorOverrides }) {
 // ===================================================================
 // SUBCOMPONENTES COMUNES
 // ===================================================================
-function CompanyLogos() { return <div className="brand-logos flex items-center gap-2"><CompanyLogo name="Aurum Arquitectos" size={32} /><CompanyLogo name="YoDesarrollo" size={32} /></div>; }
+function CompanyLogos() { return <div className="brand-mark" aria-hidden="true"><span>A</span><i /><span>yd</span></div>; }
 function CompanyLogo({ name, size = 24 }) {
-  const url = ASSETS.logos[name];
-  if (url) return <img src={url} alt={name} style={{ height: size, width: "auto", objectFit: "contain" }} />;
+  // Las imágenes de Drive (lh3) llegaban como cuadros negros en el iPhone: monograma de marca
   return <div className="logo-placeholder" style={{ width: size, height: size, fontSize: size * 0.4 }} title={name}>{getInitials(name)}</div>;
 }
 function PersonaAvatar({ name, size = 40, colorOverrides }) {
@@ -3297,6 +3303,38 @@ function GlobalStyles() {
       .brief-lbl { font-size: 9px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #8A8272; display: flex; align-items: center; gap: 0.4rem; }
       .brief-lbl-cnt { background: #F1EDE3; color: #17140F; padding: 0.05rem 0.35rem; font-size: 0.6rem; }
       .brief-stats { display: flex; gap: 0.85rem; }
+      .brand-mark { display: flex; align-items: center; gap: 6px; flex: none; }
+      .brand-mark span { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: #221E17; color: #E3B04B; font-family: 'Instrument Serif', Georgia, serif; font-size: 19px; font-style: italic; }
+      .brand-mark i { width: 1px; height: 22px; background: rgba(139,122,87,.35); }
+      /* MOAC ya trae su Tema (en «Más»); la luna flotante del portero era un botón repetido */
+      #temaBtn { display: none !important; }
+      .hdr-main { display: none; }
+      .hdr-tools { display: contents; }
+      .lbl-m { display: none; }
+      @media (max-width: 640px) {
+        .yo-header { padding: 0.8rem 0.85rem; border-radius: 16px; }
+        .yo-header .yo-eyebrow { font-size: 9px; letter-spacing: .14em; }
+        .yo-header h1 { font-size: 1.45rem; }
+        .hdr-row { flex-direction: column; align-items: stretch; gap: 0.55rem; }
+        .hdr-row > *:first-child { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+        .hdr-main { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; }
+        .hdr-main .yo-btn-primary, .hdr-main .yo-btn-secondary { min-height: 44px; justify-content: center; font-size: 0.9rem; border-radius: 12px; }
+        .hdr-mas.on { border-color: var(--accent); }
+        .hdr-tarea-desk { display: none !important; }
+        .hdr-tools { display: none; }
+        .hdr-tools.open { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.45rem; padding-top: 0.2rem; }
+        .hdr-tools.open > * { min-height: 58px; flex-direction: column; justify-content: center; gap: 4px; border-radius: 12px; font-size: 0.72rem; width: auto !important; position: relative; }
+        .hdr-tools.open .archive-toggle { grid-column: span 3; flex-direction: row; min-height: 44px; }
+        .lbl-m { display: inline; font-weight: 600; }
+        .brief .brief-stats { display: grid !important; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.35rem; }
+        .brief-stat { min-width: 0; }
+        .brief-stat-n { font-size: 1.55rem; }
+        .brief .brief-stats .brief-stat-l { font-size: 8px !important; letter-spacing: 0.03em !important; line-height: 1.25; overflow-wrap: normal; word-break: keep-all; hyphens: none; }
+        .hdr-tools.open > * svg { display: block; margin: 0 auto; flex: none; }
+        .hdr-tools.open > * { display: flex; align-items: center; }
+        .grid .metric-card, .grid .metric-btn { border-radius: 12px !important; padding: 0.6rem 0.7rem !important; }
+        .metric-label { letter-spacing: 0.08em; }
+      }
       .brief-stat { min-width: 56px; }
       .brief-stat-n { font-family: 'Instrument Serif', serif; font-size: 1.8rem; font-weight: 700; line-height: 1; }
       .brief-stat-l { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #8A8272; margin-top: 0.1rem; }
