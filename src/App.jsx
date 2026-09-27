@@ -2198,8 +2198,7 @@ function WeekBriefing({ stats, risky, onProjectClick, onProjectDiag }) {
           <div className="risk-row">
             {risky.map(p => (
               <button key={p.key} className={`risk-card risk-${p.metrics.risk}`} onClick={() => onProjectDiag ? onProjectDiag(p) : onProjectClick(p)} title="Click para ver diagnóstico del proyecto">
-                <div className="risk-head"><span className="risk-name">{p.proyecto}</span><span className="risk-pct">{p.metrics.pct}%</span></div>
-                <div className="risk-meta"><span>{p.metrics.overdue} atrasadas</span><span className="dot">·</span><span>{p.empresa}</span></div>
+                <div className="risk-head"><span className="risk-name">{p.proyecto}</span><span className="risk-pct"><b style={{ color: "#C0392B" }}>{p.metrics.overdue} atrasadas</b> · {p.metrics.pct}%</span></div>
                 <ProgressBar pct={p.metrics.pct} risk={p.metrics.risk} />
               </button>
             ))}
@@ -3371,12 +3370,12 @@ function GlobalStyles() {
         .brief .brief-stats .brief-stat-n { font-size: 1.25rem !important; }
         .brief-divider { display: none; }
         .risk-row { display: flex !important; flex-direction: column; gap: 0.3rem !important; }
-        .risk-card { padding: 0.45rem 0.65rem !important; display: grid !important; grid-template-columns: 1fr auto; align-items: center; gap: 0.1rem 0.6rem; }
-        .risk-card .risk-head { display: contents; }
-        .risk-card .risk-name { font-size: 0.85rem; }
-        .risk-card .risk-pct { grid-column: 2; grid-row: 1; font-size: 0.8rem; }
-        .risk-card .risk-meta { grid-column: 1 / -1; font-size: 0.7rem; }
-        .risk-card > :last-child { grid-column: 1 / -1; }
+        .brief .risk-row .risk-card { padding: 0.45rem 0.7rem 0.5rem !important; display: block !important; min-height: 0 !important; display: grid !important; grid-template-columns: 1fr auto; align-items: center; gap: 0.1rem 0.6rem; }
+        .brief .risk-row .risk-card .risk-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.3rem; }
+        .brief .risk-row .risk-card .risk-name { font-size: 0.85rem; }
+        .brief .risk-row .risk-card .risk-pct { grid-column: 2; grid-row: 1; font-size: 0.8rem; }
+        .brief .risk-row .risk-card .risk-meta { grid-column: 1 / -1; font-size: 0.7rem; }
+        .brief .risk-row .risk-card > :last-child { grid-column: 1 / -1; }
       }
       @media (max-width: 640px) {
         .personas-columns { display: flex !important; overflow-x: auto; scroll-snap-type: x mandatory; gap: 0.75rem; padding-bottom: 0.5rem; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
