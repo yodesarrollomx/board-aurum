@@ -5,7 +5,8 @@ import {
   AlertCircle, CheckCircle2, Clock, Zap, Settings, Eye, EyeOff,
   Play, Archive, Calendar, LayoutGrid, BarChart3, Printer,
   Sun, Moon, AlertTriangle, History, Trash2,
-  GanttChartSquare, CalendarClock, MessageSquare, RotateCcw, Send, LogOut, Lock, Sparkles, Copy
+  GanttChartSquare, CalendarClock, MessageSquare, RotateCcw, Send, LogOut, Lock, Sparkles, Copy,
+  Search,
 } from "lucide-react";
 
 // ===================================================================
@@ -847,6 +848,7 @@ function Board({ onLogout }) {
   }); // personas | proyectos | estados | calendario | timeline | misemana
   const [showArchived, setShowArchived] = useState(false);
   const [showMas, setShowMas] = useState(false);
+  const [showFiltros, setShowFiltros] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
@@ -1531,7 +1533,8 @@ function Board({ onLogout }) {
               {duplicadas.slice(0, 6).map((g, i) => (
                 <div key={i} className="dup-row">{g.map(t => (
                   <button key={t.id} className="dup-btn" onClick={() => setSelectedTaskId(t.id)} title={`${t.proyecto} · ${t.responsable}`}>{t.id}</button>
-                ))} <span className="subtle">«{String(g[0].actividad || "").slice(0, 70)}»</span></div>
+                ))} <span className="subtle">«{String(g[0].actividad || "").slice(0, 70)}»</span>
+                  <button className="dup-fix" onClick={() => { const resto = g.slice(1); if (window.confirm(`Se queda ${g[0].id} y se archivan ${resto.map(t => t.id).join(", ")} (no se borran; se ven en «Ver archivadas»). ¿Sigo?`)) resto.forEach(t => quickArchive(t.id, true)); }}>Dejar solo {g[0].id}</button></div>
               ))}
             </div>
           </div>
@@ -1601,7 +1604,11 @@ function Board({ onLogout }) {
               );
             })}
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+          {(() => { const n = ["empresa", "proyecto", "responsable", "estado"].filter(k => !/^Tod[oa]s$/.test(filters[k])).length + (filters.search ? 1 : 0);
+            return <button type="button" className={`filtros-toggle ${showFiltros ? "on" : ""}`} onClick={() => setShowFiltros(v => !v)} aria-expanded={showFiltros}>
+              <Search size={13} />{showFiltros ? "Ocultar filtros" : "Filtrar y buscar"}{n > 0 && <span className="filtros-n">{n}</span>}
+            </button>; })()}
+          <div className={`filtros-grid grid grid-cols-2 md:grid-cols-5 gap-2 ${showFiltros ? "open" : ""}`}>
             <Field label="Empresa"><select className="input" value={filters.empresa} onChange={e => setFilters({ ...filters, empresa: e.target.value })}><option>Todas</option>{EMPRESAS.map(e => <option key={e}>{e}</option>)}</select></Field>
             {filters.folio && <button type="button" className="folio-tag" style={{alignSelf:"end",cursor:"pointer",border:0}} title="Quitar el filtro por folio"
               onClick={() => { setFilters({ ...filters, folio: "" }); try { const u = new URL(location.href); u.searchParams.delete("folio"); history.replaceState(null, "", u); } catch {} }}>
@@ -3309,6 +3316,8 @@ function GlobalStyles() {
       /* MOAC ya trae su Tema (en «Más»); la luna flotante del portero era un botón repetido */
       #temaBtn { display: none !important; }
       .hdr-main { display: none; }
+      .filtros-toggle { display: none; }
+      .dup-fix { margin-left: 0.4rem; font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 999px; border: 1px solid rgba(185,139,60,.55); background: rgba(255,255,255,.6); color: #7a5a1f; cursor: pointer; }
       .hdr-tools { display: contents; }
       .lbl-m { display: none; }
       @media (max-width: 640px) {
@@ -3326,6 +3335,13 @@ function GlobalStyles() {
         .hdr-tools.open > * { min-height: 58px; flex-direction: column; justify-content: center; gap: 4px; border-radius: 12px; font-size: 0.72rem; width: auto !important; position: relative; }
         .hdr-tools.open .archive-toggle { grid-column: span 3; flex-direction: row; min-height: 44px; }
         .lbl-m { display: inline; font-weight: 600; }
+        .filtros-toggle { display: flex; align-items: center; justify-content: center; gap: 0.45rem; width: 100%; min-height: 42px; border-radius: 12px; border: 1px dashed rgba(139,122,87,.45); background: transparent; font-weight: 700; font-size: 0.85rem; color: inherit; margin-top: 0.2rem; }
+        .filtros-toggle.on { border-style: solid; }
+        .filtros-n { background: #B98B3C; color: #fff; border-radius: 999px; font-size: 0.7rem; padding: 0 0.45rem; }
+        .filtros-grid { display: none !important; }
+        .filtros-grid.open { display: grid !important; margin-top: 0.5rem; }
+        /* que los botones flotantes (📌 ⚙️) no tapen la última tarjeta */
+        .yo-shell, .mx-auto.max-w-\[1760px\] { padding-bottom: 150px !important; }
         .brief .brief-stats { display: grid !important; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.35rem; }
         .brief-stat { min-width: 0; }
         .brief-stat-n { font-size: 1.55rem; }
