@@ -144,7 +144,24 @@ const COLOR_PICKER_SWATCHES = [
 // ===================================================================
 // UTILIDADES
 // ===================================================================
-function todayStamp() { return new Date().toISOString().slice(0, 10); }
+// Fecha local de Hermosillo (UTC-7): con toISOString lo hecho después de las 17:00 quedaba con fecha de mañana
+function todayStamp() { try { return new Date().toLocaleDateString("en-CA", { timeZone: "America/Hermosillo" }); } catch { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; } }
+// Último movimiento conocido de una tarea: la fecha más reciente entre historial, terminado, comentarios y actualizado
+function ultimoMovimiento(t) {
+  const fechas = [t.actualizado, t.fechaTerminado, t.creado];
+  for (const m of String(t.historial || "").matchAll(/(\d{4}-\d{2}-\d{2})/g)) fechas.push(m[1]);
+  for (const m of String(t.comentarios || "").matchAll(/(\d{4}-\d{2}-\d{2})/g)) fechas.push(m[1]);
+  const v = fechas.filter(f => /^\d{4}-\d{2}-\d{2}/.test(String(f || ""))).map(f => String(f).slice(0, 10)).sort();
+  return v.length ? v[v.length - 1] : null;
+}
+function diasSinMovimiento(t) {
+  const u = ultimoMovimiento(t);
+  if (!u) return null;
+  const [y, m, d] = u.split("-").map(Number);
+  const hoy = new Date();
+  return Math.round((new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()) - new Date(y, m - 1, d)) / 86400000);
+}
+function estancada(t) { if (t.estado === "Terminado" || t.archivada || t.borrada) return false; const n = diasSinMovimiento(t); return n != null && n > 14; }
 function makeId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return `T-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -156,7 +173,8 @@ function normalizeUrl(url) {
   return "https://" + t;
 }
 function emptyTask() {
-  return { mes: "Mayo", mesCompromiso: "Mayo", empresa: "YoDesarrollo", proyecto: "", responsable: "", semana: "", actividad: "", entregable: "", fecha: "", estado: "Pendiente", prioridad: "Media", observaciones: "", links: [], archivada: false, fechaTerminado: "", historial: "", subtareas: "" };
+  const mesHoy = MESES[new Date().getMonth()];
+  return { mes: mesHoy, mesCompromiso: mesHoy, empresa: "YoDesarrollo", proyecto: "", responsable: "", semana: "", actividad: "", entregable: "", fecha: "", estado: "Pendiente", prioridad: "Media", observaciones: "", links: [], archivada: false, fechaTerminado: "", historial: "", subtareas: "" };
 }
 
 // Plantillas de proyecto: crean de un jalón las tareas típicas. Solo frontend (acción "create" normal).
@@ -397,7 +415,8 @@ function calcDuplicadas(tasks) {
     return RP.duplicados(abiertas);
   } catch { return []; }
 }
-function calcWeekStats(tasks) {
+function calcWeekStats(tasksIn) {
+  const tasks = tasksIn.filter(t => !t.borrada);
   const today = new Date();
   const weekAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7);
   const terminadasSemana = tasks.filter(t => {
@@ -1163,7 +1182,8 @@ function Board({ onLogout }) {
     if (key === "atrasadas") return isOverdue(t);
     if (key === "semana") { const d = daysUntil(t); return t.estado !== "Terminado" && d != null && d >= 0 && d <= 7; }
     if (key === "alta") return t.prioridad === "Alta" && t.estado !== "Terminado";
-    if (key === "sinfecha") return commitmentDate(t) == null;
+    if (key === "sinfecha") return t.estado !== "Terminado" && commitmentDate(t) == null;
+    if (key === "estancadas") return estancada(t);
     return true;
   };
 
@@ -1172,6 +1192,7 @@ function Board({ onLogout }) {
     semana: baseTasks.filter(t => matchesQuick(t, "semana")).length,
     alta: baseTasks.filter(t => matchesQuick(t, "alta")).length,
     sinfecha: baseTasks.filter(t => matchesQuick(t, "sinfecha")).length,
+    estancadas: baseTasks.filter(t => matchesQuick(t, "estancadas")).length,
   }), [baseTasks]);
 
   const filteredTasks = useMemo(() => {
@@ -1525,6 +1546,7 @@ function Board({ onLogout }) {
               { key: "semana", label: "Vencen esta semana" },
               { key: "alta", label: "Alta prioridad" },
               { key: "sinfecha", label: "Sin fecha" },
+              { key: "estancadas", label: "Sin movimiento >14 d" },
             ].map(chip => {
               const count = quickCounts[chip.key];
               const on = quickFilter === chip.key;
@@ -2268,6 +2290,7 @@ function KanbanCard({ task, onOpen, isDragging, setDraggingId, saveStatus, quick
         <span>{done && task.fechaTerminado ? `✓ ${fechaTerminadoCorta(task.fechaTerminado)}` : fechaCorta(task)}</span>
         {!done && <DeadlineBadge task={task} compact />}
         {hasLinks && <span className="link-icon"><Link2 size={10}/>{task.links.length}</span>}
+        <QuietoBadge task={task} />
       </div>
     </article>
   );
@@ -2924,6 +2947,8 @@ function MiSemanaView({ tasks, setSelectedTaskId, colorOverrides, filtroResp, se
   }).sort((a, b) => daysUntil(a) - daysUntil(b));
 
   const atrasadas = tasks.filter(t => t.estado !== "Terminado" && isOverdue(t)).sort((a, b) => daysUntil(a) - daysUntil(b));
+  // Antes las tareas sin fecha (o «Esta semana») no salían en ningún lado de Mi semana
+  const sinFecha = tasks.filter(t => t.estado !== "Terminado" && !t.archivada && commitmentDate(t) == null);
 
   return (
     <div className="misemana-view">
@@ -2952,8 +2977,21 @@ function MiSemanaView({ tasks, setSelectedTaskId, colorOverrides, filtroResp, se
         {semana.length === 0 ? <p className="subtle p-4 text-center">Nada vence esta semana. 🎉</p> :
           semana.map(t => <MiSemanaRow key={t.id} task={t} onOpen={() => setSelectedTaskId(t.id)} colorOverrides={colorOverrides} />)}
       </div>
+
+      {sinFecha.length > 0 && (
+        <div className="ms-section">
+          <h3 className="ms-section-lbl">Sin fecha — ponle día para que cuenten ({sinFecha.length})</h3>
+          {sinFecha.map(t => <MiSemanaRow key={t.id} task={t} onOpen={() => setSelectedTaskId(t.id)} colorOverrides={colorOverrides} />)}
+        </div>
+      )}
     </div>
   );
+}
+
+function QuietoBadge({ task }) {
+  if (!estancada(task)) return null;
+  const n = diasSinMovimiento(task);
+  return <span title={`Último movimiento: ${ultimoMovimiento(task)}`} style={{ fontSize: "0.66rem", fontWeight: 700, color: "#9a5b13", background: "rgba(227,169,23,0.16)", borderRadius: 999, padding: "0 0.45rem", whiteSpace: "nowrap" }}>{n} d quieta</span>;
 }
 
 function MiSemanaRow({ task, onOpen, colorOverrides }) {
@@ -2963,7 +3001,7 @@ function MiSemanaRow({ task, onOpen, colorOverrides }) {
       <div className="ms-row-due"><DeadlineBadge task={task} /></div>
       <div className="ms-row-main">
         <div className="ms-row-title">{task.actividad}</div>
-        <div className="ms-row-meta">{task.proyecto} · {task.empresa}</div>
+        <div className="ms-row-meta">{task.proyecto} · {task.empresa} <QuietoBadge task={task} /></div>
       </div>
       <div className="ms-row-asg">
         <PersonaAvatar name={task.responsable} size={22} colorOverrides={colorOverrides} />
