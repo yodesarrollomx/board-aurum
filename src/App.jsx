@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Megaphone, Home, Compass, Building2, Users, Folder,
   ChevronDown, ChevronRight, ChevronLeft, Plus, Link2, X, RefreshCw,
@@ -759,6 +759,25 @@ function _diagPersona(tasks, persona) {
 }
 
 
+// Liga tarea → objetivo/meta MOAC, visible en cada tarjeta sin pasar props por todas las vistas
+const MoacCtx = createContext(null);
+function MetaTag({ taskId }) {
+  const moac = useContext(MoacCtx);
+  const liga = moac && moac.tareas && moac.tareas[taskId];
+  if (!liga || !liga.objetivo_id) return null;
+  const meta = (moac.metas || []).find(m => m.meta_id === liga.meta_id);
+  const obj = (moac.objetivos || []).find(o => o.objetivo_id === liga.objetivo_id);
+  return <span title={`${meta ? meta.texto : ""}\n${obj ? obj.objetivo_id + " · " + obj.texto : ""}`} style={{ fontSize: "0.64rem", fontWeight: 700, color: "#5A4C30", background: "rgba(139,122,87,0.16)", borderRadius: 999, padding: "0 0.45rem", whiteSpace: "nowrap" }}>{liga.meta_id ? liga.meta_id + " · " : ""}{liga.objetivo_id}{meta && meta.principal === "SI" ? " ★" : ""}</span>;
+}
+// Nueva fecha a N días de la fecha comprometida (o de hoy si no tiene)
+function fechaMas(t, dias) {
+  const base = commitmentDate(t) || new Date();
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const d = new Date(Math.max(base, hoy)); d.setDate(d.getDate() + dias);
+  const f = deriveDateFields(`${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`);
+  return { fecha: f.fecha, mes: f.mes, mesCompromiso: f.mes, anio: f.anio, semana: f.semana };
+}
+
 function Board({ onLogout }) {
   const [tasks, setTasks] = useState(() => {
     try { const c = localStorage.getItem(CACHE_KEY); return c ? JSON.parse(c) : []; } catch { return []; }
@@ -815,6 +834,8 @@ function Board({ onLogout }) {
   // y quien no tenga rol cacheado, en "Personas" (comportamiento previo — sin regresión).
   const [currentView, setCurrentView] = useState(() => {
     try { const c = JSON.parse(sessionStorage.getItem("pyod_rol") || "null"); if (c && c.rol && c.rol !== "admin") return "misemana"; } catch {}
+    // En el teléfono lo accionable primero: Mi semana
+    try { if (window.matchMedia && window.matchMedia("(max-width: 640px)").matches) return "misemana"; } catch {}
     return "personas";
   }); // personas | proyectos | estados | calendario | timeline | misemana
   const [showArchived, setShowArchived] = useState(false);
@@ -1081,8 +1102,8 @@ function Board({ onLogout }) {
     setTasks(prev => prev.map(t => {
       if (t.id !== taskId) return t;
       const link = { id: makeId(), label, url, fechaSubida: todayStamp() };
-      const next = (t.estado === "Pendiente" || t.estado === "En proceso") ? "En standby" : t.estado;
-      return { ...t, links: [...(t.links || []), link], estado: next };
+      // Antes pasaba sola a "En standby" al subir evidencia; ahora el estado lo cambia quien decide
+      return { ...t, links: [...(t.links || []), link] };
     }));
     setLinkDraft({ label: "", url: "" });
     setSaveStatus(p => ({ ...p, [taskId]: "saving" }));
@@ -1439,6 +1460,7 @@ function Board({ onLogout }) {
   // ===========================================================
   return (
     <ErrorBoundary>
+    <MoacCtx.Provider value={moac}>
     <div className={shellClass}>
       <div className="mx-auto max-w-[1760px] px-3 py-4">
         {/* HEADER */}
@@ -1651,7 +1673,7 @@ function Board({ onLogout }) {
             <TimelineView projectsList={projectsList} setSelectedTaskId={setSelectedTaskId} colorOverrides={colorOverrides} />
           )}
           {currentView === "misemana" && (
-            <MiSemanaView tasks={filteredTasks} setSelectedTaskId={setSelectedTaskId} colorOverrides={colorOverrides} filtroResp={filters.responsable} setFiltroResp={(r) => setFilters({ ...filters, responsable: r })} responsables={responsables} />
+            <MiSemanaView updateTaskField={updateTaskField} tasks={filteredTasks} setSelectedTaskId={setSelectedTaskId} colorOverrides={colorOverrides} filtroResp={filters.responsable} setFiltroResp={(r) => setFilters({ ...filters, responsable: r })} responsables={responsables} />
           )}
         </main>
       </div>
@@ -1667,6 +1689,7 @@ function Board({ onLogout }) {
       <ConfirmModal dialog={confirmDialog} />
       <GlobalStyles />
     </div>
+    </MoacCtx.Provider>
     </ErrorBoundary>
   );
 }
@@ -2291,6 +2314,7 @@ function KanbanCard({ task, onOpen, isDragging, setDraggingId, saveStatus, quick
         {!done && <DeadlineBadge task={task} compact />}
         {hasLinks && <span className="link-icon"><Link2 size={10}/>{task.links.length}</span>}
         <QuietoBadge task={task} />
+        <MetaTag taskId={task.id} />
       </div>
     </article>
   );
@@ -2939,7 +2963,18 @@ function TimelineView({ projectsList, setSelectedTaskId, colorOverrides }) {
 // ===================================================================
 // VISTA: MI SEMANA
 // ===================================================================
-function MiSemanaView({ tasks, setSelectedTaskId, colorOverrides, filtroResp, setFiltroResp, responsables }) {
+function MiSemanaView({ tasks, setSelectedTaskId, colorOverrides, filtroResp, setFiltroResp, responsables, updateTaskField }) {
+  // Recordar quién soy en este aparato: al volver, Mi semana abre con MIS tareas y no las de todo el equipo
+  useEffect(() => {
+    if (filtroResp !== "Todos") return;
+    let yo = "";
+    try { yo = localStorage.getItem("aurum-yo") || ""; } catch {}
+    if (!yo) { try { yo = (JSON.parse(sessionStorage.getItem("yod_id_v1") || "null") || {}).nombre || ""; } catch {} }
+    const hit = yo && responsables.find(r => r === yo || r.split(" ")[0].toLowerCase() === yo.split(" ")[0].toLowerCase());
+    if (hit) setFiltroResp(hit);
+  }, []); // eslint-disable-line
+  const elegir = (r) => { try { if (r === "Todos") localStorage.removeItem("aurum-yo"); else localStorage.setItem("aurum-yo", r); } catch {} setFiltroResp(r); };
+  const rowProps = { colorOverrides, updateTaskField };
   const semana = tasks.filter(t => {
     if (t.estado === "Terminado") return false;
     const d = daysUntil(t);
@@ -2960,7 +2995,7 @@ function MiSemanaView({ tasks, setSelectedTaskId, colorOverrides, filtroResp, se
             <p className="ms-sub">Lo que vence en los próximos 7 días</p>
           </div>
         </div>
-        <select className="input ms-select" value={filtroResp} onChange={e => setFiltroResp(e.target.value)}>
+        <select className="input ms-select" value={filtroResp} onChange={e => elegir(e.target.value)}>
           {responsables.map(r => <option key={r}>{r}</option>)}
         </select>
       </div>
@@ -2968,20 +3003,20 @@ function MiSemanaView({ tasks, setSelectedTaskId, colorOverrides, filtroResp, se
       {atrasadas.length > 0 && (
         <div className="ms-section ms-section-danger">
           <h3 className="ms-section-lbl"><AlertTriangle size={12} style={{display:'inline',marginRight:4}}/>Atrasadas ({atrasadas.length})</h3>
-          {atrasadas.map(t => <MiSemanaRow key={t.id} task={t} onOpen={() => setSelectedTaskId(t.id)} colorOverrides={colorOverrides} />)}
+          {atrasadas.map(t => <MiSemanaRow key={t.id} task={t} onOpen={() => setSelectedTaskId(t.id)} {...rowProps} />)}
         </div>
       )}
 
       <div className="ms-section">
         <h3 className="ms-section-lbl">Esta semana ({semana.length})</h3>
         {semana.length === 0 ? <p className="subtle p-4 text-center">Nada vence esta semana. 🎉</p> :
-          semana.map(t => <MiSemanaRow key={t.id} task={t} onOpen={() => setSelectedTaskId(t.id)} colorOverrides={colorOverrides} />)}
+          semana.map(t => <MiSemanaRow key={t.id} task={t} onOpen={() => setSelectedTaskId(t.id)} {...rowProps} />)}
       </div>
 
       {sinFecha.length > 0 && (
         <div className="ms-section">
           <h3 className="ms-section-lbl">Sin fecha — ponle día para que cuenten ({sinFecha.length})</h3>
-          {sinFecha.map(t => <MiSemanaRow key={t.id} task={t} onOpen={() => setSelectedTaskId(t.id)} colorOverrides={colorOverrides} />)}
+          {sinFecha.map(t => <MiSemanaRow key={t.id} task={t} onOpen={() => setSelectedTaskId(t.id)} {...rowProps} />)}
         </div>
       )}
     </div>
@@ -2994,14 +3029,16 @@ function QuietoBadge({ task }) {
   return <span title={`Último movimiento: ${ultimoMovimiento(task)}`} style={{ fontSize: "0.66rem", fontWeight: 700, color: "#9a5b13", background: "rgba(227,169,23,0.16)", borderRadius: 999, padding: "0 0.45rem", whiteSpace: "nowrap" }}>{n} d quieta</span>;
 }
 
-function MiSemanaRow({ task, onOpen, colorOverrides }) {
+function MiSemanaRow({ task, onOpen, colorOverrides, updateTaskField }) {
   const pal = personPalette(task.responsable, colorOverrides);
+  const accion = (e, patch) => { e.stopPropagation(); updateTaskField && updateTaskField(task.id, patch, true); };
   return (
+    <div className="ms-row-wrap">
     <button onClick={onOpen} className={`ms-row ${isOverdue(task) ? "overdue" : ""}`}>
       <div className="ms-row-due"><DeadlineBadge task={task} /></div>
       <div className="ms-row-main">
         <div className="ms-row-title">{task.actividad}</div>
-        <div className="ms-row-meta">{task.proyecto} · {task.empresa} <QuietoBadge task={task} /></div>
+        <div className="ms-row-meta">{task.proyecto} · {task.empresa} <QuietoBadge task={task} /> <MetaTag taskId={task.id} /></div>
       </div>
       <div className="ms-row-asg">
         <PersonaAvatar name={task.responsable} size={22} colorOverrides={colorOverrides} />
@@ -3009,6 +3046,14 @@ function MiSemanaRow({ task, onOpen, colorOverrides }) {
       </div>
       <EstadoChip estado={task.estado} mini />
     </button>
+    {updateTaskField && (
+      <div className="ms-acciones">
+        <button type="button" onClick={e => accion(e, { estado: "Terminado" })}>✓ Hecho</button>
+        {task.estado !== "En proceso" && <button type="button" onClick={e => accion(e, { estado: "En proceso" })}>▶ En proceso</button>}
+        <button type="button" onClick={e => accion(e, fechaMas(task, 7))} title="Mueve la fecha comprometida una semana (queda en el historial del día)">📅 +7 días</button>
+      </div>
+    )}
+    </div>
   );
 }
 
@@ -3166,6 +3211,10 @@ function GlobalStyles() {
       .moac-cero { color: #E0605A; }
       .moac-estado { font-size: 0.68rem; padding: 0.2rem 0.35rem; border: 1px solid rgba(0,0,0,.12); background: transparent; color: inherit; max-width: 200px; }
       .moac-obj-body { grid-column: 1 / -1; padding: 0.3rem 0 0.2rem 1.1rem; }
+      .ms-row-wrap { display: flex; flex-direction: column; }
+      .ms-acciones { display: flex; gap: 0.4rem; padding: 0 0.6rem 0.55rem; flex-wrap: wrap; }
+      .ms-acciones button { font-size: 0.74rem; font-weight: 700; padding: 0.35rem 0.7rem; border-radius: 999px; border: 1px solid rgba(90,76,48,0.3); background: transparent; color: inherit; cursor: pointer; min-height: 32px; }
+      .ms-acciones button:active { transform: scale(0.97); }
       .moac-tareas { list-style: none; margin: 0.35rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
       .moac-tarea { background: transparent; border: none; text-align: left; cursor: pointer; color: inherit; font-size: 0.76rem; padding: 0.15rem 0; }
       .moac-tarea:hover { color: #B98B3C; }
