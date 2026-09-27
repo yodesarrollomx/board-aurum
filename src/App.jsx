@@ -767,6 +767,25 @@ function _diagPersona(tasks, persona) {
 }
 
 
+// Elegir de lo que ya existe (sin duplicar por una letra de más); «＋ Nuevo…» solo si de verdad es nuevo.
+// Un <datalist> en iPhone casi no muestra opciones: por eso un <select> de verdad.
+function ElegirDeLista({ value, opciones, onChange, nuevoTexto = "＋ Nuevo…", vacio = "Elige…" }) {
+  const lista = Array.from(new Set([...(opciones || []), value].filter(Boolean))).sort((a, b) => a.localeCompare(b, "es"));
+  return (
+    <select className="input" value={value || ""} onChange={e => {
+      if (e.target.value !== "__nuevo") { onChange(e.target.value); return; }
+      const v = (window.prompt("Escribe el nombre nuevo") || "").trim();
+      if (!v) return;
+      const parecido = lista.find(o => o.toLowerCase().replace(/\s+/g, " ") === v.toLowerCase().replace(/\s+/g, " "));
+      onChange(parecido || v);
+    }}>
+      <option value="" disabled>{vacio}</option>
+      {lista.map(o => <option key={o} value={o}>{o}</option>)}
+      <option value="__nuevo">{nuevoTexto}</option>
+    </select>
+  );
+}
+
 // Liga tarea → objetivo/meta MOAC, visible en cada tarjeta sin pasar props por todas las vistas
 const MoacCtx = createContext(null);
 function MetaTag({ taskId }) {
@@ -842,8 +861,6 @@ function Board({ onLogout }) {
   // y quien no tenga rol cacheado, en "Personas" (comportamiento previo — sin regresión).
   const [currentView, setCurrentView] = useState(() => {
     try { const c = JSON.parse(sessionStorage.getItem("pyod_rol") || "null"); if (c && c.rol && c.rol !== "admin") return "misemana"; } catch {}
-    // En el teléfono lo accionable primero: Mi semana
-    try { if (window.matchMedia && window.matchMedia("(max-width: 640px)").matches) return "misemana"; } catch {}
     return "personas";
   }); // personas | proyectos | estados | calendario | timeline | misemana
   const [showArchived, setShowArchived] = useState(false);
@@ -1246,7 +1263,13 @@ function Board({ onLogout }) {
     return h;
   }, [filteredTasks]);
 
-  const personasOrdenadas = useMemo(() => Object.keys(hierarchy).sort((a, b) => a.localeCompare(b)), [hierarchy]);
+  // Tu tarjeta primero; a la derecha, las de tu equipo (en el cel se desliza de lado)
+  const personasOrdenadas = useMemo(() => {
+    let yo = "";
+    try { yo = localStorage.getItem("aurum-yo") || (JSON.parse(sessionStorage.getItem("yod_id_v1") || "null") || {}).nombre || ""; } catch {}
+    const primero = (n) => yo && (n === yo || n.split(" ")[0].toLowerCase() === yo.split(" ")[0].toLowerCase());
+    return Object.keys(hierarchy).sort((a, b) => (primero(b) - primero(a)) || a.localeCompare(b));
+  }, [hierarchy]);
 
   const projectsList = useMemo(() => {
     const byProject = {};
@@ -1352,8 +1375,8 @@ function Board({ onLogout }) {
                     {EMPRESAS.map(e => <option key={e}>{e}</option>)}
                   </select>
                 </Field>
-                <Field label="Proyecto"><input className="input" value={selectedTask.proyecto || ""} onChange={e => updateTaskField(selectedTask.id, { proyecto: e.target.value })} /></Field>
-                <Field label="Responsable"><input className="input" value={selectedTask.responsable || ""} onChange={e => updateTaskField(selectedTask.id, { responsable: e.target.value })} /></Field>
+                <Field label="Proyecto"><ElegirDeLista value={selectedTask.proyecto} opciones={projects.filter(p => p !== "Todos")} nuevoTexto="＋ Proyecto nuevo…" onChange={v => updateTaskField(selectedTask.id, { proyecto: v }, true)} /></Field>
+                <Field label="Responsable"><ElegirDeLista value={selectedTask.responsable} opciones={responsables.filter(p => p !== "Todos")} nuevoTexto="＋ Persona nueva…" onChange={v => updateTaskField(selectedTask.id, { responsable: v }, true)} /></Field>
                 <Field label="Fecha (calendario)">
                   <input type="date" className="input" value={taskDateStr} onChange={e => {
                     const ds = e.target.value; const derived = deriveDateFields(ds);
@@ -1579,7 +1602,7 @@ function Board({ onLogout }) {
 
         {/* FILTROS */}
         <section className="mb-3 yo-card p-2">
-          <div className="flex flex-wrap gap-2 mb-2">
+          <div className="quick-chips flex flex-wrap gap-2 mb-2">
             {[
               { key: "atrasadas", label: "Atrasadas" },
               { key: "semana", label: "Vencen esta semana" },
@@ -1626,8 +1649,8 @@ function Board({ onLogout }) {
             <div className="mb-3 flex items-center justify-between"><h2 className="yo-eyebrow">Nueva tarea</h2><button onClick={() => setShowForm(false)} className="btn-ghost"><X size={14}/></button></div>
             <div className="grid gap-2 md:grid-cols-3">
               <Field label="Empresa"><select value={newTask.empresa} onChange={e => setNewTask({ ...newTask, empresa: e.target.value })} className="input">{EMPRESAS.map(e => <option key={e}>{e}</option>)}</select></Field>
-              <Field label="Proyecto (existente o nuevo)"><input className="input" list="dl-proyectos" value={newTask.proyecto} onChange={e => setNewTask({ ...newTask, proyecto: e.target.value })} placeholder="Selecciona o escribe nuevo" /><datalist id="dl-proyectos">{existingProjects.map(p => <option key={p} value={p} />)}</datalist></Field>
-              <Field label="Responsable (existente o nuevo)"><input className="input" list="dl-responsables" value={newTask.responsable} onChange={e => setNewTask({ ...newTask, responsable: e.target.value })} placeholder="Selecciona o escribe nuevo" /><datalist id="dl-responsables">{existingResponsables.map(r => <option key={r} value={r} />)}</datalist></Field>
+              <Field label="Proyecto"><ElegirDeLista value={newTask.proyecto} opciones={existingProjects} nuevoTexto="＋ Proyecto nuevo…" vacio="Elige el proyecto…" onChange={v => setNewTask({ ...newTask, proyecto: v })} /></Field>
+              <Field label="Responsable"><ElegirDeLista value={newTask.responsable} opciones={existingResponsables} nuevoTexto="＋ Persona nueva…" vacio="¿Quién lo lleva?" onChange={v => setNewTask({ ...newTask, responsable: v })} /></Field>
               <Field label="Fecha (calendario)"><input type="date" className="input" value={newTask._dateStr || ""} onChange={e => { const ds = e.target.value; const d = deriveDateFields(ds); setNewTask({ ...newTask, _dateStr: ds, fecha: d.fecha, anio: d.anio, semana: d.semana, mes: d.mes, mesCompromiso: d.mes }); }} /></Field>
               <Field label="Prioridad"><select className="input" value={newTask.prioridad} onChange={e => setNewTask({ ...newTask, prioridad: e.target.value })}>{PRIORIDADES.map(p => <option key={p}>{p}</option>)}</select></Field>
               <Field label="Estado"><select className="input" value={newTask.estado} onChange={e => setNewTask({ ...newTask, estado: e.target.value })}>{ESTADOS.map(s => <option key={s}>{s}</option>)}</select></Field>
@@ -1651,7 +1674,7 @@ function Board({ onLogout }) {
               <div className="grid gap-2 md:grid-cols-3">
                 <Field label="Plantilla"><select className="input" value={tplDraft.templateId} onChange={e => { const id = e.target.value; const t = PROJECT_TEMPLATES.find(x => x.id === id); setTplDraft({ ...tplDraft, templateId: id, empresa: t ? t.empresa : tplDraft.empresa }); }}><option value="">— Elige una —</option>{PROJECT_TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}</select></Field>
                 <Field label="Empresa"><select className="input" value={tplDraft.empresa} onChange={e => setTplDraft({ ...tplDraft, empresa: e.target.value })}>{EMPRESAS.map(e => <option key={e}>{e}</option>)}</select></Field>
-                <Field label="Responsable (existente o nuevo)"><input className="input" list="dl-responsables" value={tplDraft.responsable} onChange={e => setTplDraft({ ...tplDraft, responsable: e.target.value })} placeholder="¿Quién lo lleva?" /></Field>
+                <Field label="Responsable"><ElegirDeLista value={tplDraft.responsable} opciones={existingResponsables} nuevoTexto="＋ Persona nueva…" vacio="¿Quién lo lleva?" onChange={v => setTplDraft({ ...tplDraft, responsable: v })} /></Field>
               </div>
               <div className="grid gap-2 mt-2">
                 <Field label="Nombre del proyecto"><input className="input" value={tplDraft.proyecto} onChange={e => setTplDraft({ ...tplDraft, proyecto: e.target.value })} placeholder="Ej. Casa Pueblas, App CroKiss…" /></Field>
@@ -3274,6 +3297,9 @@ function GlobalStyles() {
       .input { width: 100%; border: 1px solid rgba(255,255,255,.12); background: #101013; padding: 0.5rem 0.65rem; font-size: 0.82rem; font-family:'Instrument Sans','Manrope', sans-serif; outline: none; color: #F1EDE3; }
       .input:focus { border-color: #B98B3C; }
       textarea.input { resize: vertical; min-height: 60px; }
+      input.input[type="date"] { -webkit-appearance: none; appearance: none; display: block; min-height: 44px; line-height: 1.3; text-align: left; }
+      input.input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 1.3em; }
+      @media (max-width: 640px) { select.input, input.input { min-height: 44px; font-size: 16px; } } /* 16px: iPhone ya no hace zoom al tocar */
       .field { display: block; }
       .field-label { display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #8A8272; margin-bottom: 0.3rem; }
       .diagnostic-banner { display: flex; gap: 0.7rem; align-items: flex-start; background: rgba(217,164,91,.16); border-left: 4px solid #D9A45B; color: #D9A45B; padding: 0.85rem 1rem; font-size: 0.8rem; }
@@ -3316,6 +3342,18 @@ function GlobalStyles() {
       /* MOAC ya trae su Tema (en «Más»); la luna flotante del portero era un botón repetido */
       #temaBtn { display: none !important; }
       .hdr-main { display: none; }
+      @media (max-width: 640px) {
+        .personas-columns { display: flex !important; overflow-x: auto; scroll-snap-type: x mandatory; gap: 0.75rem; padding-bottom: 0.5rem; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .personas-columns > * { flex: 0 0 88%; scroll-snap-align: start; }
+        /* Metas como tiras KPI que se deslizan de lado, no una pared de tarjetas */
+        .moac-grid { display: flex !important; overflow-x: auto; scroll-snap-type: x mandatory; gap: 0.5rem; scrollbar-width: none; }
+        .moac-grid > .moac-meta { flex: 0 0 78%; scroll-snap-align: start; padding: 0.6rem 0.75rem !important; }
+        .moac-meta-txt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 0.82rem !important; }
+        .moac-meta.on .moac-meta-txt { -webkit-line-clamp: unset; }
+        /* Chips rápidos: una sola fila que se desliza */
+        .quick-chips { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+        .quick-chips > button { flex: none; white-space: nowrap; min-height: 36px; }
+      }
       .filtros-toggle { display: none; }
       .dup-fix { margin-left: 0.4rem; font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 999px; border: 1px solid rgba(185,139,60,.55); background: rgba(255,255,255,.6); color: #7a5a1f; cursor: pointer; }
       .hdr-tools { display: contents; }
@@ -3753,7 +3791,7 @@ function GlobalStyles() {
       .ms-row-title { font-size: 0.85rem; font-weight: 600; }
       .ms-row-meta { font-size: 0.7rem; color: #8A8272; }
       .ms-row-asg { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; font-weight: 600; }
-      @media (max-width:640px){ .ms-row{ grid-template-columns: 50px 1fr; } .ms-row-asg,.ms-row .est-chip{ display:none; } }
+      @media (max-width:640px){ .ms-row{ grid-template-columns: auto minmax(0,1fr) !important; gap: 0.6rem !important; } .ms-row-due{ min-width: 0 !important; width: auto !important; } .ms-row-asg,.ms-row .est-chip{ display:none; } }
 
       /* ============ COMENTARIOS ============ */
       .comentarios-list { display: flex; flex-direction: column; gap: 0.8rem; }
