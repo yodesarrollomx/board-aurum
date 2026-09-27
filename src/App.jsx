@@ -1979,6 +1979,20 @@ function moacFechaCorta(f) {
   if (d === 0) return "hoy";
   return `en ${d} d`;
 }
+// KPI de la meta: el número al que se compromete y dónde va hoy. Sale de las columnas
+// meta_num / hoy_num si existen; si no, del propio texto («2 PPP», «12 lotes», «100 %») y de valor_hoy.
+function kpiMeta(m) {
+  const num = (x) => { const v = parseFloat(String(x ?? "").replace(",", ".")); return Number.isFinite(v) ? v : null; };
+  let meta = num(m.meta_num), hoy = num(m.hoy_num), unidad = "";
+  const sinFecha = String(m.texto || "").replace(/^\s*al\s+\d{1,2}-[a-záéíóú]+-\d{4}\s*/i, "");
+  const mt = sinFecha.match(/(\d+(?:[.,]\d+)?)\s*(%|[a-záéíóúñA-Z]+)/);
+  if (meta == null && mt) meta = num(mt[1]);
+  if (mt) unidad = mt[2] === "%" ? "%" : (mt[2] === mt[2].toUpperCase() ? mt[2] : mt[2].toLowerCase());
+  if (hoy == null) { const h = String(m.valor_hoy || "").match(/(\d+(?:[.,]\d+)?)/); hoy = h ? num(h[1]) : null; }
+  if (meta == null || hoy == null || meta <= 0) return null;
+  return { meta, hoy, unidad };
+}
+
 function MoacPanel({ moac, err, tasks, onOpenTask, onAssign, onObjetivoEstado, onReload }) {
   const [abierto, setAbierto] = useState(() => { try { return localStorage.getItem("aurum-moac-open") !== "0"; } catch { return true; } });
   const [metaSel, setMetaSel] = useState(null);
@@ -2041,6 +2055,9 @@ function MoacPanel({ moac, err, tasks, onOpenTask, onAssign, onObjetivoEstado, o
             return (
               <button key={m.meta_id} className={`moac-meta ${on ? "on" : ""} ${m.principal === "SI" ? "principal" : ""}`} onClick={() => { setMetaSel(on ? null : m.meta_id); setObjSel(null); }}>
                 <div className="moac-meta-top"><span className="moac-meta-id">{m.meta_id}{m.principal === "SI" ? " ★" : ""}</span><span className="moac-meta-fecha">{m.fecha ? String(m.fecha).slice(0, 10) : ""}</span></div>
+                {(() => { const k = kpiMeta(m); return k && (
+                  <div className="moac-kpi"><b>{k.hoy}</b><span>/ {k.meta}{k.unidad ? " " + k.unidad : ""}</span>
+                    <div className="moac-kpi-bar"><i style={{ width: `${Math.min(100, Math.round(100 * k.hoy / k.meta))}%` }} /></div></div>); })()}
                 <div className="moac-meta-txt">{m.texto}</div>
                 <div className="moac-meta-meta">{m.dueno ? `Dueño: ${m.dueno}` : ""}{st.rojos ? ` · ${st.rojos} objetivo${st.rojos === 1 ? "" : "s"} vencido${st.rojos === 1 ? "" : "s"}` : ""}</div>
                 <div className="moac-bar" title={`${st.cerr}/${st.objs} objetivos cerrados`}><div className="moac-bar-fill" style={{ width: `${st.pctObj}%` }} /></div>
@@ -2192,7 +2209,7 @@ function WeekBriefing({ stats, risky, onProjectClick, onProjectDiag }) {
     </section>
   );
 }
-function BriefStat({ n, label }) { return <div className="brief-stat"><div className="brief-stat-n">{n}</div><div className="brief-stat-l">{label}</div></div>; }
+function BriefStat({ n, label }) { return <div className={`brief-stat ${n ? "" : "cero"}`}><div className="brief-stat-n">{n}</div><div className="brief-stat-l">{label}</div></div>; }
 function ProgressBar({ pct, risk = "ok" }) { return <div className={`progress progress-${risk}`}><div className="progress-fill" style={{ width: `${pct}%` }} /></div>; }
 
 // ===================================================================
@@ -3342,6 +3359,25 @@ function GlobalStyles() {
       /* MOAC ya trae su Tema (en «Más»); la luna flotante del portero era un botón repetido */
       #temaBtn { display: none !important; }
       .hdr-main { display: none; }
+      .moac-kpi { display: flex; align-items: baseline; gap: 0.35rem; flex-wrap: wrap; margin: 0.15rem 0 0.35rem; }
+      .moac-kpi b { font-family: 'Instrument Serif', Georgia, serif; font-size: 1.9rem; line-height: 1; font-weight: 400; }
+      .moac-kpi span { font-size: 0.8rem; font-weight: 700; opacity: 0.7; }
+      .moac-kpi-bar { flex-basis: 100%; height: 6px; border-radius: 99px; background: rgba(139,122,87,.18); overflow: hidden; }
+      .moac-kpi-bar i { display: block; height: 100%; background: #B98B3C; border-radius: 99px; }
+      .brief-stat.cero { opacity: 0.45; }
+      @media (max-width: 640px) {
+        /* «Esta semana» en una banda: números chicos, riesgos como renglones */
+        .brief { padding: 0.7rem 0.8rem !important; gap: 0.6rem !important; }
+        .brief .brief-stats .brief-stat-n { font-size: 1.25rem !important; }
+        .brief-divider { display: none; }
+        .risk-row { display: flex !important; flex-direction: column; gap: 0.3rem !important; }
+        .risk-card { padding: 0.45rem 0.65rem !important; display: grid !important; grid-template-columns: 1fr auto; align-items: center; gap: 0.1rem 0.6rem; }
+        .risk-card .risk-head { display: contents; }
+        .risk-card .risk-name { font-size: 0.85rem; }
+        .risk-card .risk-pct { grid-column: 2; grid-row: 1; font-size: 0.8rem; }
+        .risk-card .risk-meta { grid-column: 1 / -1; font-size: 0.7rem; }
+        .risk-card > :last-child { grid-column: 1 / -1; }
+      }
       @media (max-width: 640px) {
         .personas-columns { display: flex !important; overflow-x: auto; scroll-snap-type: x mandatory; gap: 0.75rem; padding-bottom: 0.5rem; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
         .personas-columns > * { flex: 0 0 88%; scroll-snap-align: start; }
