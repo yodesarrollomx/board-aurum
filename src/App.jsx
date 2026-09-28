@@ -1990,7 +1990,19 @@ function kpiMeta(m) {
   if (mt) unidad = mt[2] === "%" ? "%" : (mt[2] === mt[2].toUpperCase() ? mt[2] : mt[2].toLowerCase());
   if (hoy == null) { const h = String(m.valor_hoy || "").match(/(\d+(?:[.,]\d+)?)/); hoy = h ? num(h[1]) : null; }
   if (meta == null || hoy == null || meta <= 0) return null;
-  return { meta, hoy, unidad };
+  // Ritmo: desde el punto de partida (16-ago-2026) hasta la fecha límite, ¿dónde deberías ir HOY?
+  let ritmo = null;
+  const fin = m.fecha ? new Date(String(m.fecha).slice(0, 10) + "T12:00:00") : null;
+  const ini = new Date("2026-08-16T12:00:00"), ahora = new Date();
+  if (fin && !isNaN(fin) && fin > ini) {
+    const frac = Math.min(1, Math.max(0, (ahora - ini) / (fin - ini)));
+    const base = unidad === "%" && hoy > 0 ? Math.min(hoy, meta) : 0;   // el % arranca donde estaba, no en cero
+    const esperado = unidad === "%" ? base + (meta - base) * frac : meta * frac;
+    const dias = Math.ceil((fin - ahora) / 86400000);
+    const tol = unidad === "%" ? 2 : 0.25;
+    ritmo = { esperado: Math.round(esperado * 10) / 10, dias, ok: hoy + tol >= esperado, pctTiempo: Math.round(frac * 100) };
+  }
+  return { meta, hoy, unidad, ritmo };
 }
 
 function MoacPanel({ moac, err, tasks, onOpenTask, onAssign, onObjetivoEstado, onReload }) {
@@ -2057,7 +2069,8 @@ function MoacPanel({ moac, err, tasks, onOpenTask, onAssign, onObjetivoEstado, o
                 <div className="moac-meta-top"><span className="moac-meta-id">{m.meta_id}{m.principal === "SI" ? " ★" : ""}</span><span className="moac-meta-fecha">{m.fecha ? String(m.fecha).slice(0, 10) : ""}</span></div>
                 {(() => { const k = kpiMeta(m); return k && (
                   <div className="moac-kpi"><b>{k.hoy}</b><span>/ {k.meta}{k.unidad ? " " + k.unidad : ""}</span>
-                    <div className="moac-kpi-bar"><i style={{ width: `${Math.min(100, Math.round(100 * k.hoy / k.meta))}%` }} /></div></div>); })()}
+                    <div className="moac-kpi-bar"><i style={{ width: `${Math.min(100, Math.round(100 * k.hoy / k.meta))}%` }} />{k.ritmo && <em title="Dónde deberías ir hoy" style={{ left: `${Math.min(100, Math.round(100 * k.ritmo.esperado / k.meta))}%` }} />}</div>
+                    {k.ritmo && <div className={`moac-ritmo ${k.ritmo.ok ? "ok" : "no"}`}>{k.ritmo.ok ? "● En ritmo" : `● Va atrás: corrió ${k.ritmo.pctTiempo}% del tiempo y llevas ${Math.round(100 * k.hoy / k.meta)}%`}{" · "}{k.ritmo.dias > 0 ? `faltan ${k.ritmo.dias} días` : "venció"}</div>}</div>); })()}
                 <div className="moac-meta-txt">{m.texto}</div>
                 <div className="moac-meta-meta">{m.dueno ? `Dueño: ${m.dueno}` : ""}{st.rojos ? ` · ${st.rojos} objetivo${st.rojos === 1 ? "" : "s"} vencido${st.rojos === 1 ? "" : "s"}` : ""}</div>
                 <div className="moac-bar" title={`${st.cerr}/${st.objs} objetivos cerrados`}><div className="moac-bar-fill" style={{ width: `${st.pctObj}%` }} /></div>
@@ -3362,7 +3375,11 @@ function GlobalStyles() {
       .moac-kpi b { font-family: 'Instrument Serif', Georgia, serif; font-size: 1.9rem; line-height: 1; font-weight: 400; }
       .moac-kpi span { font-size: 0.8rem; font-weight: 700; opacity: 0.7; }
       .moac-kpi-bar { flex-basis: 100%; height: 6px; border-radius: 99px; background: rgba(139,122,87,.18); overflow: hidden; }
+      .moac-kpi-bar { position: relative; overflow: visible !important; }
       .moac-kpi-bar i { display: block; height: 100%; background: #B98B3C; border-radius: 99px; }
+      .moac-kpi-bar em { position: absolute; top: -3px; width: 2px; height: 12px; background: #221E17; border-radius: 2px; transform: translateX(-1px); }
+      .moac-ritmo { flex-basis: 100%; font-size: 0.72rem; font-weight: 700; margin-top: 0.25rem; }
+      .moac-ritmo.ok { color: #4F7A3A; } .moac-ritmo.no { color: #B4462E; }
       .brief-stat.cero { opacity: 0.45; }
       @media (max-width: 640px) {
         /* «Esta semana» en una banda: números chicos, riesgos como renglones */
