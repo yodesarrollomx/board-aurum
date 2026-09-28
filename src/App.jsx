@@ -63,9 +63,11 @@ function credencialRechazada(accion) {
 }
 
 const ASSETS = {
+  // Logos oficiales (sitio de Aurum y marca YoDesarrollo), en tinta clara y oscura: yod-portal/marca/
+  // Los JPG de Drive que había aquí eran de un solo color y salían como cuadros negros.
   logos: {
-    "Aurum Arquitectos": "https://lh3.googleusercontent.com/d/1Yqwx2HNO1xveThRfGGTgQqLwQ7Rhurc5=w400",
-    "YoDesarrollo": "https://lh3.googleusercontent.com/d/1MusXx_SQyLmTAt5fg6oMg0GaRSkDFrck=w400",
+    "Aurum Arquitectos": { base: "https://yodesarrollomx.github.io/yod-portal/marca/aurum", mono: "aurum-mono" },
+    "YoDesarrollo": { base: "https://yodesarrollomx.github.io/yod-portal/marca/yod", mono: "yod-mono" },
   },
 };
 
@@ -2922,9 +2924,17 @@ function PresentActivity({ tasks, colorOverrides }) {
 // ===================================================================
 // SUBCOMPONENTES COMUNES
 // ===================================================================
-function CompanyLogos() { return <div className="brand-mark" aria-hidden="true"><span>A</span><i /><span>yd</span></div>; }
+function LogoMarca({ name, mono, height, alt }) {
+  const l = ASSETS.logos[name]; if (!l) return null;
+  const b = mono ? l.base.replace(/[^/]+$/, l.mono) : l.base;
+  return <span className="logo-marca" style={{ height }}>
+    <img className="logo-claro" src={`${b}-claro.png`} alt={alt ?? name} style={{ height }} />
+    <img className="logo-oscuro" src={`${b}-oscuro.png`} alt="" aria-hidden="true" style={{ height }} />
+  </span>;
+}
+function CompanyLogos() { return <div className="brand-mark"><LogoMarca name="Aurum Arquitectos" height={30} /><i /><LogoMarca name="YoDesarrollo" height={18} /></div>; }
 function CompanyLogo({ name, size = 24 }) {
-  // Las imágenes de Drive (lh3) llegaban como cuadros negros en el iPhone: monograma de marca
+  if (ASSETS.logos[name]) return <LogoMarca name={name} mono height={size} />;
   return <div className="logo-placeholder" style={{ width: size, height: size, fontSize: size * 0.4 }} title={name}>{getInitials(name)}</div>;
 }
 function PersonaAvatar({ name, size = 40, colorOverrides }) {
@@ -3369,8 +3379,14 @@ function GlobalStyles() {
       .brief-lbl-cnt { background: #F1EDE3; color: #17140F; padding: 0.05rem 0.35rem; font-size: 0.6rem; }
       .brief-stats { display: flex; gap: 0.85rem; }
       .brand-mark { display: flex; align-items: center; gap: 6px; flex: none; }
-      .brand-mark span { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: #221E17; color: #E3B04B; font-family: 'Instrument Serif', Georgia, serif; font-size: 19px; font-style: italic; }
-      .brand-mark i { width: 1px; height: 22px; background: rgba(139,122,87,.35); }
+      .brand-mark { flex-wrap: wrap; gap: 10px !important; }
+      .brand-mark i { width: 1px; height: 26px; background: rgba(139,122,87,.35); }
+      .logo-marca { display: inline-flex; align-items: center; flex: none; }
+      .logo-marca img { width: auto; display: block; }
+      .logo-oscuro { display: none !important; }
+      .dark .logo-claro { display: none !important; }
+      .dark .logo-oscuro { display: block !important; }
+      @media (max-width: 640px) { .brand-mark { flex-direction: column; align-items: flex-start !important; gap: 6px !important; } .brand-mark i { display: none; } }
       /* MOAC ya trae su Tema (en «Más»); la luna flotante del portero era un botón repetido */
       #temaBtn { display: none !important; }
       .hdr-main { display: none; }
@@ -3415,7 +3431,7 @@ function GlobalStyles() {
       .lbl-m { display: none; }
       @media (max-width: 640px) {
         .yo-header { padding: 0.8rem 0.85rem; border-radius: 16px; }
-        .yo-header .yo-eyebrow { font-size: 9px; letter-spacing: .14em; }
+        .yo-header .yo-eyebrow { display: none; } /* los logos ya dicen quién es */
         .yo-header h1 { font-size: 1.45rem; }
         .hdr-row { flex-direction: column; align-items: stretch; gap: 0.55rem; }
         .hdr-row > *:first-child { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
