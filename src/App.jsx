@@ -1403,6 +1403,7 @@ function Board({ onLogout }) {
                       </optgroup>
                     ))}
                   </select>
+                  {moacErr && <div className="moac-err" style={{ marginTop: "0.35rem" }}>⚠ {moacErr}</div>}
                 </Field>
               </div>
               <div className="mt-4 grid gap-3">
@@ -2054,7 +2055,7 @@ function MoacPanel({ moac, err, tasks, onOpenTask, onAssign, onObjetivoEstado, o
           <button className={`moac-chip ${sinObjetivo.length ? "moac-chip-alerta" : "moac-chip-ok"}`} onClick={() => setVerSin(v => !v)} title="Regla D.2: una tarea entra a la semana solo si cierra un objetivo">
             {sinObjetivo.length ? `⚠ ${sinObjetivo.length} sin objetivo · ${sinObjetivoSemana.length} de esta semana` : "✓ 0 tareas sin objetivo"}
           </button>
-          {err && <span className="moac-err" title={err}>⚠</span>}
+          {err && <button className="moac-err moac-err-box" onClick={onReload} title="Volver a intentar">⚠ Metas de la última lectura buena — no se pudo actualizar: {err} · <u>Reintentar</u></button>}
           <a className="btn-ghost" href="https://docs.google.com/spreadsheets/d/1HaUMdocq78kZPilNST6P-GHJjLMMPjWe0Pe8iXqnBBQ/edit" target="_blank" rel="noreferrer" title="Editar metas y objetivos en el Sheet">Sheet ↗</a>
           <button className="btn-ghost" onClick={onReload} title="Releer el libro MOAC">↻</button>
         </div>
@@ -2949,7 +2950,7 @@ function SaveDot({ status }) {
 function SaveBadge({ status, errorMsg, onRetry }) {
   if (status === "saving") return <span className="badge-saving"><Clock size={12}/>Guardando…</span>;
   if (status === "saved") return <span className="badge-saved"><CheckCircle2 size={12}/>Guardado</span>;
-  if (status === "error") return <button onClick={onRetry} className="badge-error" title={errorMsg || ""}><AlertCircle size={12}/>Error · reintentar</button>;
+  if (status === "error") return <button onClick={onRetry} className="badge-error" title={errorMsg || ""}><AlertCircle size={12}/>No se guardó{errorMsg ? `: ${String(errorMsg).slice(0, 90)}` : ""} · reintentar</button>;
   return <span className="badge-idle">Listo</span>;
 }
 function GlobalSyncBadge({ status }) { return <span className={`g-sync g-sync-${status.type}`}>{status.text}</span>; }
@@ -3266,6 +3267,7 @@ function GlobalStyles() {
       .moac-chip-alerta { background: rgba(224,96,90,.14); color: #E0605A; border-color: rgba(224,96,90,.4); }
       .moac-chip-ok { background: rgba(125,155,90,.14); color: #6f8f4e; border-color: rgba(125,155,90,.35); }
       .moac-err { color: #E0605A; font-size: 0.72rem; }
+      .moac-err-box { flex-basis: 100%; text-align: left; background: rgba(224,96,90,.08); border: 1px solid rgba(224,96,90,.35); border-radius: 10px; padding: 0.45rem 0.65rem; cursor: pointer; line-height: 1.35; }
       .moac-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0.55rem; margin-top: 0.7rem; }
       .moac-meta { text-align: left; background: rgba(0,0,0,.03); border: 1px solid rgba(0,0,0,.08); padding: 0.6rem 0.65rem; cursor: pointer; color: inherit; display: flex; flex-direction: column; gap: 0.25rem; transition: border-color .15s, transform .15s; }
       .moac-meta:hover { border-color: #B98B3C; transform: translateY(-1px); }
