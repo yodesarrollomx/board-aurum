@@ -1996,7 +1996,8 @@ function kpiMeta(m) {
   const ini = new Date("2026-08-16T12:00:00"), ahora = new Date();
   if (fin && !isNaN(fin) && fin > ini) {
     const frac = Math.min(1, Math.max(0, (ahora - ini) / (fin - ini)));
-    const base = unidad === "%" && hoy > 0 ? Math.min(hoy, meta) : 0;   // el % arranca donde estaba, no en cero
+    const pp = String(m.partida || m.punto_de_partida_16_ago_2026_ || "").match(/(\d+(?:[.,]\d+)?)\s*%/);
+    const base = unidad === "%" ? (pp ? num(pp[1]) : 0) : 0;   // el % arranca donde estaba el 16-ago, no en cero
     const esperado = unidad === "%" ? base + (meta - base) * frac : meta * frac;
     const dias = Math.ceil((fin - ahora) / 86400000);
     const tol = unidad === "%" ? 2 : 0.25;
@@ -2070,7 +2071,7 @@ function MoacPanel({ moac, err, tasks, onOpenTask, onAssign, onObjetivoEstado, o
                 {(() => { const k = kpiMeta(m); return k && (
                   <div className="moac-kpi"><b>{k.hoy}</b><span>/ {k.meta}{k.unidad ? " " + k.unidad : ""}</span>
                     <div className="moac-kpi-bar"><i style={{ width: `${Math.min(100, Math.round(100 * k.hoy / k.meta))}%` }} />{k.ritmo && <em title="Dónde deberías ir hoy" style={{ left: `${Math.min(100, Math.round(100 * k.ritmo.esperado / k.meta))}%` }} />}</div>
-                    {k.ritmo && <div className={`moac-ritmo ${k.ritmo.ok ? "ok" : "no"}`}>{k.ritmo.ok ? "● En ritmo" : `● Va atrás: corrió ${k.ritmo.pctTiempo}% del tiempo y llevas ${Math.round(100 * k.hoy / k.meta)}%`}{" · "}{k.ritmo.dias > 0 ? `faltan ${k.ritmo.dias} días` : "venció"}</div>}</div>); })()}
+                    {k.ritmo && <div className={`moac-ritmo ${k.ritmo.ok ? "ok" : "no"}`}>{k.ritmo.ok ? "● En ritmo" : (k.unidad === "%" ? `● Va atrás: hoy debería ir en ${Math.round(k.ritmo.esperado)} %` : `● Va atrás: corrió ${k.ritmo.pctTiempo}% del tiempo y llevas ${Math.round(100 * k.hoy / k.meta)}%`)}{" · "}{k.ritmo.dias > 0 ? `faltan ${k.ritmo.dias} días` : "venció"}</div>}</div>); })()}
                 <div className="moac-meta-txt">{m.texto}</div>
                 <div className="moac-meta-meta">{m.dueno ? `Dueño: ${m.dueno}` : ""}{st.rojos ? ` · ${st.rojos} objetivo${st.rojos === 1 ? "" : "s"} vencido${st.rojos === 1 ? "" : "s"}` : ""}</div>
                 <div className="moac-bar" title={`${st.cerr}/${st.objs} objetivos cerrados`}><div className="moac-bar-fill" style={{ width: `${st.pctObj}%` }} /></div>
