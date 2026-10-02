@@ -56,7 +56,30 @@ propiedades privadas `CORCHO_OWNER_EMAIL` y `CORCHO_SPREADSHEET_ID`.
   autorización administrativa vigente. Un administrador ajeno no accede.
 - Hoja `Corcho`: `id,version,payload_json`; `@config` guarda ejes y versión
   global. Se preservan las notas omitidas; archivo/restauración no borran filas.
+- El almacén es un libro privado separado. La infraestructura y los headers
+  se preparan antes de la integración; el handler no crea libros, pestañas ni
+  permisos. Una hoja con solo los headers devuelve la versión inicial cero.
+- El guard usa el token del usuario efectivo para comprobar en Drive que ese
+  principal y el propietario configurado coinciden. Recorre archivo y todos
+  sus ancestros, y todas las páginas de permisos, incluida la vista publicada.
+  Solo acepta un propietario exacto: rechaza unidades compartidas, otros
+  usuarios, grupos, dominios, accesos públicos y metadatos incompletos.
+- Cada lectura revalida el guard; cada escritura lo revalida también justo
+  antes de `setValues`. No hay caché positiva ni almacén alternativo. Drive y
+  Sheets no ofrecen una transacción conjunta que bloquee cambios externos de
+  ACL durante la operación.
+- No se amplían scopes automáticamente. Sin token/scope/servicio disponible se
+  devuelve `consentimiento_requerido`; si no se puede demostrar la privacidad,
+  no se accede a las notas. `corchoPreflight_` permite verificar el mismo guard
+  desde el editor sin leer notas ni devolver IDs/correos. No es una ruta pública
+  ni sustituye verificar el principal de la implementación en ejecución.
+
+El guard consulta únicamente metadatos mediante [Drive `files.get`](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/get),
+[`permissions.list`](https://developers.google.com/workspace/drive/api/reference/rest/v3/permissions/list)
+y [`about.get`](https://developers.google.com/workspace/drive/api/reference/rest/v3/about/get).
+El token de [Apps Script corresponde al usuario efectivo](https://developers.google.com/apps-script/reference/script/script-app#getOAuthToken()).
 
 Antes de desplegar: identificar fuente activa, respaldar editor y versión,
-comprobar sus dependencias, integrar el handler y conservar URL y permisos.
+comprobar manifiesto/scopes ya consentidos y las dependencias, verificar ACL y
+propietario del libro privado, integrar el handler y conservar URL y permisos.
 La verificación productiva es de lectura; escrituras de prueba solo con dobles.
