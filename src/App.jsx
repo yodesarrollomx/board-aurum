@@ -1096,11 +1096,12 @@ function Board({ onLogout }) {
         create: async a => {
           const task = { ...intake.draft, actividad: a.actividad, proyecto: a.proyecto,
             observaciones: [intake.draft.observaciones || "", `[Encargo ${intake.marker} / ${a.index + 1}]`, intake.sourceId ? `Fuente: ${intake.sourceId}` : "", `Texto original:\n${a.source}\n\nAcción:\n${a.detalle}`].filter(Boolean).join("\n"),
-            historial: [a.existingId ? intake.draft.historial || "" : "", `${todayStamp()} ${a.existingId ? "Encargo preparado; ID conservado" : intake.draft.estado || "Pendiente"}`].filter(Boolean).join("\n"), archivada: false, borrada: false };
+            historial: [a.existingId ? intake.draft.historial || "" : "", `${todayStamp()} ${a.existingId ? "Encargo preparado; ID conservado" : intake.draft.estado || "Pendiente"}`].filter(Boolean).join("\n"), archivada: !!intake.draft.archivada, borrada: !!intake.draft.borrada };
           let result;
-          if (a.existingId) { await apiCall("update", { id: a.existingId, patch: patchToSheet(task) }); result = { id: a.existingId }; }
+          const sourcePatch = { actividad: task.actividad, proyecto: task.proyecto, observaciones: task.observaciones, historial: task.historial };
+          if (a.existingId) { await apiCall("update", { id: a.existingId, patch: patchToSheet(sourcePatch) }); result = { id: a.existingId }; }
           else result = await apiCall("create", { task: patchToSheet(task) });
-          if (result.id) { setTasks(prev => a.existingId ? prev.map(t => t.id === a.existingId ? { ...t, ...task } : t) : [{ ...task, id: result.id, links: [] }, ...prev]); recentlyModified.current[result.id] = Date.now(); }
+          if (result.id) { setTasks(prev => a.existingId ? prev.map(t => t.id === a.existingId ? { ...t, ...sourcePatch } : t) : [{ ...task, id: result.id, links: [] }, ...prev]); recentlyModified.current[result.id] = Date.now(); }
           return result;
         },
         link: async (tareaId, objetivoId) => {
@@ -1458,7 +1459,7 @@ function Board({ onLogout }) {
               </div>
               <div className="mt-4 grid gap-3">
                 <Field label="Actividad"><textarea className="input min-h-[80px]" value={selectedTask.actividad || ""} onChange={e => updateTaskField(selectedTask.id, { actividad: e.target.value })} /></Field>
-                {!isTerminada && <button className="yo-btn-secondary" onClick={() => prepareExistingTask(selectedTask)}><Sparkles size={13}/>Preparar este encargo en acciones</button>}
+                {!isTerminada && !selectedTask.borrada && <button className="yo-btn-secondary" onClick={() => prepareExistingTask(selectedTask)}><Sparkles size={13}/>Preparar este encargo en acciones</button>}
                 <Field label="Entregable"><textarea className="input min-h-[80px]" value={selectedTask.entregable || ""} onChange={e => updateTaskField(selectedTask.id, { entregable: e.target.value })} /></Field>
                 <Field label="Observaciones"><textarea className="input min-h-[120px]" value={selectedTask.observaciones || ""} onChange={e => updateTaskField(selectedTask.id, { observaciones: e.target.value })} placeholder="Notas, bloqueos, contexto…" /></Field>
               </div>
