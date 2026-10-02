@@ -1,17 +1,22 @@
 {
-  "model_revision": "2026-09-30.1",
-  "proposal_id": "CHG-ATLAS-001",
-  "summary": "Incorporar este repositorio al atlas de YOD OS: instrucciones para agentes, declaración de impacto y verificación de propuestas versionadas antes de integrar cambios.",
+  "model_revision": "2026-10-01.26-moac-amalaya-chinches",
+  "proposal_id": "CHG-CHINCHES-CIERRE-001",
+  "summary": "Separar problemas de clasificación de la semana, compactar señales semanales y preparar encargos con acciones breves, fuente original y referencias existentes; confirmar tarea y vínculo por separado y conciliar respuestas perdidas sin duplicar. Añadir handler Corcho privado conforme CTR-DESPACHO-CORCHO, pendiente de integración y despliegue en el proyecto existente.",
   "components": [
     "SYS-TAREAS",
     "GAS-OPERACION",
     "SHEET-OPERACION",
     "GAS-MOAC-METAS",
-    "SHEET-MOAC-METAS"
+    "SHEET-MOAC-METAS",
+    "SYS-DESPACHO",
+    "GAS-PORTERO"
   ],
   "tests": [
     "git diff --check",
-    "npm ci && npm run build (compilación verificada; no demuestra funcionamiento en producción)"
+    "npm ci && npm run build",
+    "node --test tests/*.test.mjs: flags, preparación y recuperación parcial, identidad exacta/DP, CAS, posiciones, archivo/restauración, lectura sin creación ni fuga",
+    "Interfaz con datos sintéticos: panel separado, franja compacta, desglose, fallo de vínculo y recuperación sin duplicar en escritorio y móvil",
+    "Comprobar frontend publicado y fuente activa GAS por separado; ninguna prueba escribe datos de negocio"
   ],
-  "rollback": "Revertir el commit de este cambio mediante revisión y repetir las verificaciones locales. No borrar ni restaurar registros de negocio, Sheets o archivos de clientes como parte del rollback."
+  "rollback": "Revertir frontend mediante PR; para Corcho restaurar exclusivamente la versión de implementación anterior respaldada, conservando URL, permisos, editor pendiente y filas. No borrar ni restaurar datos de negocio. Git no acredita despliegue GAS."
 }

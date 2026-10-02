@@ -39,3 +39,26 @@ textarea:focus-visible, [role="button"]:focus-visible, [tabindex]:focus-visible 
 .dup-banner{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:10px;border:1px solid rgba(217,119,6,.35);background:rgba(217,119,6,.08);font-size:13px}
 .dup-row{margin-top:4px}
 .dup-btn{font:inherit;font-size:11px;font-weight:700;border:1px solid rgba(217,119,6,.45);border-radius:6px;padding:1px 6px;margin-right:4px;background:transparent;cursor:pointer}
+.week-strip{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;padding:10px 12px;margin-bottom:12px;border:1px solid rgba(139,122,87,.25);border-radius:10px;font-size:12px}
+.week-strip>strong{font-size:11px;text-transform:uppercase;letter-spacing:.07em}
+.week-signals{display:flex;flex-wrap:wrap;gap:6px 14px}
+.week-signals span{display:inline-flex;align-items:center;gap:4px}
+.week-signals i{width:6px;height:6px;border-radius:50%}
+.week-bar{display:flex;width:100px;height:5px;border-radius:5px;overflow:hidden}
+.week-bar i{display:block;height:100%}
+.week-risks{margin-left:auto;position:relative;color:#b3402a}
+.week-risks summary{cursor:pointer}
+.week-risks>div{position:absolute;right:0;top:24px;z-index:10;min-width:240px;max-width:85vw;display:grid;padding:6px;background:#f6f3ed;border:1px solid rgba(139,122,87,.4);box-shadow:0 6px 18px #0002}
+.week-risks button{font:inherit;text-align:left;padding:7px;color:#b3402a}
+.data-problems{border:1px solid #c14b3c55;background:#c14b3c0a;padding:10px 12px;border-radius:10px;font-size:12px}
+.data-problems summary{display:flex;gap:7px;align-items:center;cursor:pointer;color:#b3402a;font-weight:700}
+.data-problems p{margin:8px 0}
+.data-problem-row{display:grid;grid-template-columns:70px 1fr;gap:4px 10px;text-align:left;width:100%;font:inherit;padding:8px;border-top:1px solid #c14b3c22}
+.data-problem-row small{grid-column:2;color:#b3402a}
+.intake-preview{margin-top:16px;border-top:1px solid #8b7a5755;padding-top:10px;font-size:12px}
+.intake-preview h3{font-weight:700;margin:0 0 6px}
+.intake-preview p{margin-bottom:8px}
+.intake-action{display:grid;grid-template-columns:minmax(150px,2fr) minmax(120px,1fr) minmax(180px,2fr);gap:6px;padding:10px 0;border-top:1px solid #8b7a5722}
+.intake-action small{grid-column:1/-1}
+.intake-error{color:#b3402a;margin-top:7px}
+@media(max-width:700px){.week-bar{order:3;width:100%}.week-risks{margin-left:0}.week-risks>div{left:0;right:auto}.intake-action{grid-template-columns:1fr}}

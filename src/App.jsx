@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { normalizeTask, dataProblems, prepareIntake, savePreparedActions } from "./task-intake.mjs";
 import {
   Megaphone, Home, Compass, Building2, Users, Folder,
   ChevronDown, ChevronRight, ChevronLeft, Plus, Link2, X, RefreshCw,
@@ -421,7 +422,7 @@ function calcDuplicadas(tasks) {
   } catch { return []; }
 }
 function calcWeekStats(tasksIn) {
-  const tasks = tasksIn.filter(t => !t.borrada);
+  const tasks = tasksIn.filter(t => !t.borrada && !t.archivada);
   const today = new Date();
   const weekAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7);
   const terminadasSemana = tasks.filter(t => {
@@ -809,7 +810,7 @@ function fechaMas(t, dias) {
 
 function Board({ onLogout }) {
   const [tasks, setTasks] = useState(() => {
-    try { const c = localStorage.getItem(CACHE_KEY); return c ? JSON.parse(c) : []; } catch { return []; }
+    try { const c = localStorage.getItem(CACHE_KEY); const rows = c ? JSON.parse(c) : []; return Array.isArray(rows) ? rows.map(normalizeTask) : []; } catch { return []; }
   });
   // TC-4 (26-sep): el tablero cenital abre MOAC con ?folio=PRJ-… y aquí llega ya filtrado.
   const folioURL = (() => { try { return (new URLSearchParams(location.search).get("folio") || "").toUpperCase(); } catch { return ""; } })();
@@ -819,6 +820,10 @@ function Board({ onLogout }) {
   const [showTemplate, setShowTemplate] = useState(false);
   const [tplDraft, setTplDraft] = useState({ templateId: "", empresa: "YoDesarrollo", proyecto: "", responsable: "" });
   const [newTask, setNewTask] = useState(emptyTask());
+  const [intake, setIntake] = useState(null);
+  const [intakeBusy, setIntakeBusy] = useState(false);
+  const intakeLock = useRef(false);
+  const [intakeError, setIntakeError] = useState("");
   const [linkDraft, setLinkDraft] = useState({ label: "", url: "" });
   const [comentDraft, setComentDraft] = useState("");
   const [comentAutor, setComentAutor] = useState("");
@@ -849,9 +854,11 @@ function Board({ onLogout }) {
   }, []);
   useEffect(() => { loadMoac(); const id = setInterval(() => loadMoac(), 5 * 60 * 1000); return () => clearInterval(id); }, [loadMoac]);
   const assignMoac = useCallback(async (tareaId, objetivoId) => {
-    // optimista: la liga se ve al instante; el Sheet se actualiza atrás
-    setMoac(prev => prev ? { ...prev, tareas: { ...(prev.tareas || {}), [tareaId]: { ...((prev.tareas || {})[tareaId] || {}), objetivo_id: objetivoId, meta_id: (prev.objetivos || []).find(o => o.objetivo_id === objetivoId)?.meta_id || "" } } } : prev);
-    try { await apiCall("moacSet", { tareaId, objetivoId }); } catch (e) { setMoacErr("No se pudo ligar: " + (e.message || e)); }
+    try {
+      await apiCall("moacSet", { tareaId, objetivoId });
+      setMoac(prev => prev ? { ...prev, tareas: { ...(prev.tareas || {}), [tareaId]: { ...((prev.tareas || {})[tareaId] || {}), objetivo_id: objetivoId, meta_id: (prev.objetivos || []).find(o => o.objetivo_id === objetivoId)?.meta_id || "" } } } : prev);
+      setMoacErr("");
+    } catch (e) { setMoacErr("No se pudo ligar: " + (e.message || e)); }
   }, []);
   const setMoacObjetivoEstado = useCallback(async (objetivoId, estado) => {
     setMoac(prev => prev ? { ...prev, objetivos: (prev.objetivos || []).map(o => o.objetivo_id === objetivoId ? { ...o, estado } : o) } : prev);
@@ -921,7 +928,7 @@ function Board({ onLogout }) {
       // Sin fallback público: el data.json del repo se retiró (contenía tareas
       // reales). Todo sale del Apps Script con credencial del Portero.
       const result = await apiCall("getAll");
-      const remote = Array.isArray(result.tasks) ? result.tasks : null;
+      const remote = Array.isArray(result.tasks) ? result.tasks.map(normalizeTask) : null;
       if (Array.isArray(remote)) {
         const now = Date.now();
         const merged = remote.map(rt => {
@@ -959,6 +966,7 @@ function Board({ onLogout }) {
     } catch (err) {
       pendingPatches.current[taskId] = { ...sheetPatch, ...(pendingPatches.current[taskId] || {}) };
       setSaveStatus(p => ({ ...p, [taskId]: "error", [`${taskId}_err`]: err.message }));
+      return false;
     }
   }, []);
 
@@ -1048,24 +1056,61 @@ function Board({ onLogout }) {
   }
 
   async function addTask() {
-    if (!newTask.proyecto.trim() || !newTask.responsable.trim() || !newTask.actividad.trim()) {
-      alert("Completa proyecto, responsable y actividad."); return;
-    }
-    const tempId = makeId();
-    const histInicial = `${todayStamp()} ${newTask.estado || "Pendiente"}`;
-    const tempTask = { ...newTask, id: tempId, mes: newTask.mesCompromiso || newTask.mes, creado: todayStamp(), actualizado: todayStamp(), links: [], archivada: false, fechaTerminado: "", historial: histInicial, subtareas: "" };
-    setTasks(prev => [tempTask, ...prev]);
-    setNewTask(emptyTask());
-    setShowForm(false);
-    setSaveStatus(p => ({ ...p, [tempId]: "saving" }));
+    if (!newTask.responsable.trim() || !newTask.actividad.trim()) { setIntakeError("Completa responsable y encargo."); return; }
+    setIntakeError("");
+    const actions = prepareIntake(newTask.actividad, { draft: newTask, tasks: tasksRef.current, moac, registry: window.YodProyectos });
+    const sourceId = intake?.sourceId;
+    if (sourceId && actions.length) actions[0].existingId = sourceId;
+    setIntake({ marker: makeId(), sourceId, draft: { ...newTask }, actions });
+  }
+  async function prepareExistingTask(task) {
+    if (intake?.actions.some(a => a.phase !== "prepared" && a.phase !== "saved")) return;
+    if (await flushTask(task.id) === false) return;
+    const actions = prepareIntake(task.actividad, { draft: task, tasks: tasksRef.current, moac, registry: window.YodProyectos });
+    if (!actions.length) return;
+    actions[0].existingId = task.id;
+    setNewTask({ ...task }); setIntakeError("");
+    setIntake({ marker: makeId(), sourceId: task.id, draft: { ...task }, actions });
+    setSelectedTaskId(null); setShowForm(true);
+  }
+  async function saveIntake() {
+    if (!intake || intakeLock.current) return;
+    const actions = intake.actions;
+    if (actions.some(a => !a.proyecto.trim() || !a.actividad.trim() || !a.objetivoId)) { setIntakeError("Las acciones sin proyecto u objetivo están señaladas abajo. Completa solo esas referencias."); return; }
+    if (!moac || moacErr) { setIntakeError("No se han confirmado los objetivos actuales. Relee MOAC antes de guardar."); return; }
+    intakeLock.current = true; setIntakeBusy(true); setIntakeError("");
+    const refresh = () => setIntake({ ...intake, actions: actions.map(a => ({ ...a })) });
     try {
-      const sheetTask = patchToSheet({ ...tempTask, mesCompromiso: tempTask.mesCompromiso });
-      const result = await apiCall("create", { task: sheetTask });
-      setTasks(prev => prev.map(t => t.id === tempId ? { ...t, id: result.id } : t));
-      recentlyModified.current[result.id] = Date.now();
-      setSaveStatus(p => { const n = { ...p }; delete n[tempId]; n[result.id] = "saved"; return n; });
-      setTimeout(() => setSaveStatus(p => p[result.id] === "saved" ? { ...p, [result.id]: "idle" } : p), SAVED_FLASH_MS);
-    } catch (err) { setSaveStatus(p => ({ ...p, [tempId]: "error", [`${tempId}_err`]: err.message })); }
+      // Una respuesta perdida se concilia por marcador exacto; nunca se repite a ciegas.
+      if (actions.some(a => a.phase === "uncertain")) {
+        const r = await apiCall("getAll");
+        for (const a of actions.filter(a => a.phase === "uncertain")) {
+          const marker = `[Encargo ${intake.marker} / ${a.index + 1}]`;
+          const found = (r.tasks || []).filter(t => String(t.observaciones || "").includes(marker));
+          if (found.length !== 1) throw new Error("La creación aún no puede conciliarse. Relee en un momento; el encargo permanece aquí sin duplicarse.");
+          a.id = found[0].id; a.phase = "created";
+        }
+        refresh();
+      }
+      await savePreparedActions(actions, {
+        create: async a => {
+          const task = { ...intake.draft, actividad: a.actividad, proyecto: a.proyecto,
+            observaciones: [intake.draft.observaciones || "", `[Encargo ${intake.marker} / ${a.index + 1}]`, intake.sourceId ? `Fuente: ${intake.sourceId}` : "", `Texto original:\n${a.source}\n\nAcción:\n${a.detalle}`].filter(Boolean).join("\n"),
+            historial: [a.existingId ? intake.draft.historial || "" : "", `${todayStamp()} ${a.existingId ? "Encargo preparado; ID conservado" : intake.draft.estado || "Pendiente"}`].filter(Boolean).join("\n"), archivada: false, borrada: false };
+          let result;
+          if (a.existingId) { await apiCall("update", { id: a.existingId, patch: patchToSheet(task) }); result = { id: a.existingId }; }
+          else result = await apiCall("create", { task: patchToSheet(task) });
+          if (result.id) { setTasks(prev => a.existingId ? prev.map(t => t.id === a.existingId ? { ...t, ...task } : t) : [{ ...task, id: result.id, links: [] }, ...prev]); recentlyModified.current[result.id] = Date.now(); }
+          return result;
+        },
+        link: async (tareaId, objetivoId) => {
+          await apiCall("moacSet", { tareaId, objetivoId });
+          setMoac(prev => prev ? { ...prev, tareas: { ...(prev.tareas || {}), [tareaId]: { objetivo_id: objetivoId, meta_id: (prev.objetivos || []).find(o => o.objetivo_id === objetivoId)?.meta_id || "" } } } : prev);
+        }, onChange: refresh,
+      });
+      setNewTask(emptyTask()); await loadFromRemote();
+    } catch (e) { setIntakeError(e.message || String(e)); }
+    finally { intakeLock.current = false; setIntakeBusy(false); }
   }
 
   async function duplicateTask(srcId) {
@@ -1207,6 +1252,8 @@ function Board({ onLogout }) {
   const existingResponsables = useMemo(() => responsables.filter(r => r !== "Todos"), [responsables]);
   const existingActividades = useMemo(() => Array.from(new Set(tasks.map(t => t.actividad).filter(Boolean))).sort(), [tasks]);
   const archivedCount = useMemo(() => tasks.filter(t => t.archivada).length, [tasks]);
+  const tasksWithProblems = useMemo(() => tasks.filter(t => !t.borrada && !t.archivada && t.estado !== "Terminado").map(t => ({ task: t, problems: dataProblems(t, window.YodProyectos) })).filter(r => r.problems.length), [tasks]);
+  const correctionIds = useMemo(() => new Set(tasksWithProblems.map(r => r.task.id)), [tasksWithProblems]);
   const allPersonas = useMemo(() => Array.from(new Set(tasks.map(t => t.responsable).filter(Boolean))).sort(), [tasks]);
 
   // Lista base: aplica todos los filtros MENOS los chips rápidos (sirve para contar cada chip)
@@ -1215,6 +1262,7 @@ function Board({ onLogout }) {
     return tasks.filter(t => {
       if (t.borrada) return false;
       if (!showArchived && t.archivada) return false;
+      if (correctionIds.has(t.id)) return false;
       if (filters.empresa !== "Todas" && t.empresa !== filters.empresa) return false;
       if (filters.proyecto !== "Todos" && t.proyecto !== filters.proyecto) return false;
       if (filters.folio && folioDe(t.proyecto) !== filters.folio) return false;
@@ -1226,7 +1274,7 @@ function Board({ onLogout }) {
       }
       return true;
     });
-  }, [tasks, filters, showArchived]);
+  }, [tasks, filters, showArchived, correctionIds]);
 
   const matchesQuick = (t, key) => {
     if (key === "atrasadas") return isOverdue(t);
@@ -1298,7 +1346,7 @@ function Board({ onLogout }) {
   const metricsByEmpresa = useMemo(() => EMPRESAS.map(e => ({ empresa: e, m: calcMetricsFor(filteredTasks.filter(t => t.empresa === e)) })), [filteredTasks]);
   const overdueCount = useMemo(() => filteredTasks.filter(isOverdue).length, [filteredTasks]);
 
-  const weekStats = useMemo(() => calcWeekStats(tasks), [tasks]);
+  const weekStats = useMemo(() => calcWeekStats(tasks.filter(t => !correctionIds.has(t.id))), [tasks, correctionIds]);
   const duplicadas = useMemo(() => calcDuplicadas(tasks), [tasks]);
   const riskyProjects = useMemo(() => projectsList.filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo").slice(0, 4), [projectsList]);
 
@@ -1410,6 +1458,7 @@ function Board({ onLogout }) {
               </div>
               <div className="mt-4 grid gap-3">
                 <Field label="Actividad"><textarea className="input min-h-[80px]" value={selectedTask.actividad || ""} onChange={e => updateTaskField(selectedTask.id, { actividad: e.target.value })} /></Field>
+                {!isTerminada && <button className="yo-btn-secondary" onClick={() => prepareExistingTask(selectedTask)}><Sparkles size={13}/>Preparar este encargo en acciones</button>}
                 <Field label="Entregable"><textarea className="input min-h-[80px]" value={selectedTask.entregable || ""} onChange={e => updateTaskField(selectedTask.id, { entregable: e.target.value })} /></Field>
                 <Field label="Observaciones"><textarea className="input min-h-[120px]" value={selectedTask.observaciones || ""} onChange={e => updateTaskField(selectedTask.id, { observaciones: e.target.value })} placeholder="Notas, bloqueos, contexto…" /></Field>
               </div>
@@ -1566,6 +1615,12 @@ function Board({ onLogout }) {
           </div>
         )}
 
+        {tasksWithProblems.length > 0 && <details className="data-problems mb-3">
+          <summary><AlertTriangle size={15}/> Datos por corregir · {tasksWithProblems.length}</summary>
+          <p>Estas tareas necesitan corregirse y quedan fuera de la operación semanal. Su registro y su historial se conservan.</p>
+          {tasksWithProblems.map(({ task, problems }) => <button key={task.id} onClick={() => setSelectedTaskId(task.id)} className="data-problem-row"><b>{task.id}</b><span>{task.actividad}</span><small>{problems.join(" · ")}</small></button>)}
+        </details>}
+
         <WeekBriefing stats={weekStats} risky={riskyProjects} colorOverrides={colorOverrides}
           onProjectClick={(p) => { setCurrentView("proyectos"); setExpandedProjectRows({ [p.key]: true }); }}
           onProjectDiag={(p) => openDiag("proyecto", { projectKey: p.key, empresa: p.empresa, proyecto: p.proyecto })} />
@@ -1659,11 +1714,23 @@ function Board({ onLogout }) {
               <Field label="Estado"><select className="input" value={newTask.estado} onChange={e => setNewTask({ ...newTask, estado: e.target.value })}>{ESTADOS.map(s => <option key={s}>{s}</option>)}</select></Field>
             </div>
             <div className="grid gap-2 mt-2">
-              <Field label="Actividad (existente o nueva)"><input className="input" list="dl-actividades" value={newTask.actividad} onChange={e => setNewTask({ ...newTask, actividad: e.target.value })} placeholder="Selecciona o escribe nueva" /><datalist id="dl-actividades">{existingActividades.map(a => <option key={a} value={a} />)}</datalist></Field>
+              <Field label="Encargo"><textarea className="input" rows={3} value={newTask.actividad} onChange={e => setNewTask({ ...newTask, actividad: e.target.value })} placeholder="Escribe lo que necesitas. Se prepararán acciones breves con su proyecto y objetivo." /></Field>
               <Field label="Entregable"><input className="input" value={newTask.entregable} onChange={e => setNewTask({ ...newTask, entregable: e.target.value })} /></Field>
             </div>
             {newTask._dateStr && <div className="mt-2 form-derived">Se guardará como: <strong>{newTask.mes}</strong> · <strong>{newTask.fecha}</strong> · <strong>{newTask.semana}</strong></div>}
-            <div className="mt-3 flex justify-end"><button onClick={addTask} className="yo-btn-primary"><Plus size={14}/>Crear en Sheet</button></div>
+            <div className="mt-3 flex justify-end"><button onClick={addTask} disabled={intakeBusy || !!intake?.actions.some(a => a.id || a.phase === "uncertain")} className="yo-btn-primary"><Sparkles size={14}/>Preparar acciones</button></div>
+            {intakeError && <p role="alert" className="intake-error">{intakeError}</p>}
+            {intake && <div className="intake-preview"><h3>Acciones preparadas · {intake.actions.length}</h3><p>El texto original se conserva. {intake.sourceId ? `La primera acción mantiene ${intake.sourceId} y su historial; las demás tendrán su propio ID. ` : ""}Se muestran las referencias que todavía necesitan precisión.</p>
+              {intake.actions.map((a, i) => <div key={a.index} className="intake-action">
+                <input aria-label={`Título de acción ${i + 1}`} className="input" value={a.actividad} disabled={intakeBusy || !!a.id || a.phase === "uncertain"} onChange={e => setIntake(p => ({ ...p, actions: p.actions.map((row, n) => n === i ? { ...row, actividad: e.target.value } : row) }))}/>
+                <select aria-label={`Proyecto de acción ${i + 1}`} className="input" value={a.proyecto} disabled={intakeBusy || !!a.id || a.phase === "uncertain"} onChange={e => setIntake(p => ({ ...p, actions: p.actions.map((row, n) => n === i ? { ...row, proyecto: e.target.value, objetivoId: "" } : row) }))}><option value="">Proyecto por precisar</option>{[...new Set([...existingProjects, a.proyecto].filter(Boolean))].map(p => <option key={p}>{p}</option>)}</select>
+                <select aria-label={`Objetivo de acción ${i + 1}`} className="input" value={a.objetivoId} disabled={intakeBusy || a.phase === "saved"} onChange={e => setIntake(p => ({ ...p, actions: p.actions.map((row, n) => n === i ? { ...row, objetivoId: e.target.value } : row) }))}><option value="">Objetivo por precisar</option>{(moac?.objetivos || []).filter(o => !/^(cerrado|cancelado|terminado)$/i.test(o.estado || "")).map(o => <option key={o.objetivo_id} value={o.objetivo_id}>{o.objetivo_id} · {o.texto}</option>)}</select>
+                <small role="status">{a.phase === "saved" ? `✓ ${a.id} · tarea y vínculo confirmados` : a.phase === "link-error" ? `${a.id} creada · falta confirmar vínculo` : a.phase === "uncertain" ? "Creación por conciliar" : a.phase === "update-error" ? "Actualización pendiente · ID conservado" : intakeBusy ? "Guardando…" : a.reason}</small>
+                {a.error && <small className="intake-error">{a.error}</small>}
+              </div>)}
+              <div className="flex gap-2 mt-3"><button className="yo-btn-primary" onClick={saveIntake} disabled={intakeBusy || intake.actions.every(a => a.phase === "saved")}>{intakeBusy ? "Guardando…" : intake.actions.some(a => a.id || a.phase === "uncertain") ? "Conciliar y completar" : "Guardar acciones"}</button>
+              <button className="yo-btn-secondary" disabled={intakeBusy || intake.actions.some(a => a.phase !== "prepared" && a.phase !== "saved")} onClick={() => { if (intake.sourceId) setNewTask(emptyTask()); setIntake(null); setIntakeError(""); }}>Cerrar preparación</button></div>
+            </div>}
           </section>
         )}
 
@@ -2196,32 +2263,20 @@ function ViewSelector({ value, onChange }) {
 // BRIEFING SEMANAL
 // ===================================================================
 function WeekBriefing({ stats, risky, onProjectClick, onProjectDiag }) {
+  const signals = [
+    { key: "terminadasSemana", label: "terminadas", color: "#21845c" },
+    { key: "revisionSemana", label: "a revisión", color: "#86723b" },
+    { key: "vencenSemana", label: "vencen en 7 días", color: "#357aa2" },
+    { key: "atrasadas", label: "atrasadas", color: "#c14b3c" },
+  ].filter(s => Number(stats[s.key]) > 0);
+  const total = signals.reduce((n, s) => n + Number(stats[s.key]), 0);
   return (
-    <section className="brief">
-      <div className="brief-col brief-col-stats">
-        <div className="brief-lbl">Esta semana</div>
-        <div className="brief-stats">
-          <BriefStat n={stats.terminadasSemana} label="terminadas" />
-          <BriefStat n={stats.revisionSemana} label="a revisión" />
-          <BriefStat n={stats.vencenSemana} label="vencen 7d" />
-          <BriefStat n={stats.atrasadas || 0} label="atrasadas" />
-          <BriefStat n={stats.nuevasSemana || 0} label="nuevas" />
-        </div>
-      </div>
-      <div className="brief-divider" />
-      <div className="brief-col brief-col-risks">
-        <div className="brief-lbl"><span style={{ color: "#DC2626" }}>●</span> Proyectos en riesgo<span className="brief-lbl-cnt">{risky.length}</span></div>
-        {risky.length === 0 ? <div className="brief-empty">Todos los proyectos en plazo.</div> : (
-          <div className="risk-row">
-            {risky.map(p => (
-              <button key={p.key} className={`risk-card risk-${p.metrics.risk}`} onClick={() => onProjectDiag ? onProjectDiag(p) : onProjectClick(p)} title="Click para ver diagnóstico del proyecto">
-                <div className="risk-head"><span className="risk-name">{p.proyecto}</span><span className="risk-pct"><b style={{ color: "#C0392B" }}>{p.metrics.overdue} atrasadas</b> · {p.metrics.pct}%</span></div>
-                <ProgressBar pct={p.metrics.pct} risk={p.metrics.risk} />
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+    <section className="week-strip" aria-label="Resumen de esta semana">
+      <strong>Esta semana</strong>
+      {signals.length ? <div className="week-signals">{signals.map(s => <span key={s.key}><i style={{ background: s.color }}/><b>{stats[s.key]}</b> {s.label}</span>)}</div> : <span className="subtle">Sin movimientos ni vencimientos registrados.</span>}
+      {total > 0 && <div className="week-bar" aria-hidden="true">{signals.map(s => <i key={s.key} style={{ width: `${Number(stats[s.key]) / total * 100}%`, background: s.color }}/>)}</div>}
+      {Number(stats.nuevasSemana) > 0 && <span className="subtle">+{stats.nuevasSemana} nuevas</span>}
+      {risky.length > 0 && <details className="week-risks"><summary>{risky.length} proyectos en riesgo</summary><div>{risky.map(p => <button key={p.key} onClick={() => onProjectDiag ? onProjectDiag(p) : onProjectClick(p)}>{p.proyecto} · {p.metrics.overdue} atrasadas</button>)}</div></details>}
     </section>
   );
 }
