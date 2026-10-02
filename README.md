@@ -19,3 +19,44 @@ Publicación: `.github/workflows/deploy.yml` construye y publica en Pages en cad
 ## Acceso
 Entrar con Google a través del **Portero YOD** (`potenciales-yod/portero.js`). Cada petición
 lleva la credencial (`k`) y el Apps Script la valida con `board=TA`; sin ella no entrega datos.
+
+## Encargos y problemas de clasificación
+
+La captura prepara acciones con títulos breves, conserva el encargo completo en
+observaciones y propone solo proyectos y objetivos existentes. Las referencias
+ambiguas quedan visibles para precisar; la preparación local no utiliza IA ni
+crea proyectos u objetivos. Una acción aparece confirmada después de recibir su
+ID y el ACK del vínculo. Un vínculo fallido conserva el ID; una respuesta de
+creación perdida se concilia por marcador antes de repetirla.
+También se puede preparar un encargo existente desde su ficha: la primera acción
+conserva el ID y el historial, y las demás reciben IDs propios. No se cierra el
+encargo ni se destruye su contexto al prepararlo.
+
+«Datos por corregir» separa tareas sin proyecto, proyecto sin registro,
+responsable vacío o encargos de corrección del sistema de la operación semanal.
+No cambia el registro ni lo marca terminado. Los flags de Sheets se interpretan
+como booleanos, incluyendo textos `TRUE`/`FALSE`.
+
+## Corcho privado · integración pendiente
+
+`apps-script/corcho.gs` implementa `CTR-DESPACHO-CORCHO` y se verifica con dobles;
+su presencia aquí no significa que esté desplegado. Debe integrarse **en el
+proyecto y la implementación actuales** de Operación, antes del guard TA, sin
+modificar `getAll` ni `update`. Necesita `PORTERO_EXEC`, `jsonOut_` y las
+propiedades privadas `CORCHO_OWNER_EMAIL` y `CORCHO_SPREADSHEET_ID`.
+
+- `corchoGet {k}` → `{ok, version, data: {axes, notes}}`; leer no crea recursos.
+- `corchoSave {k, version, data}` → ACK con versión global confirmada. Un
+  conflicto devuelve `{ok:false,error:"conflicto",version}` sin sobrescribir.
+- Ejes `{ejeX,ejeY}` de hasta 100 caracteres. Notas con ID `N-*`, título de
+  hasta 160, cuerpo de hasta 12000, etiquetas de eje de hasta 100, posiciones
+  numéricas de 0 a 88, color `arena/rosa/verde/azul/lila` y estado
+  `activo/archivado`. Las fechas las conserva/genera el servidor.
+- Solo el correo exacto del propietario, obtenido del canje Portero, con DP o
+  autorización administrativa vigente. Un administrador ajeno no accede.
+- Hoja `Corcho`: `id,version,payload_json`; `@config` guarda ejes y versión
+  global. Se preservan las notas omitidas; archivo/restauración no borran filas.
+
+Antes de desplegar: identificar fuente activa, respaldar editor y versión,
+comprobar sus dependencias, integrar el handler y conservar URL y permisos.
+La verificación productiva es de lectura; escrituras de prueba solo con dobles.
