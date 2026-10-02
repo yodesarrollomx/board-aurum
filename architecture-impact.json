@@ -1,7 +1,7 @@
 {
   "model_revision": "2026-10-01.26-moac-amalaya-chinches",
   "proposal_id": "CHG-CHINCHES-CIERRE-001",
-  "summary": "Separar problemas de clasificación de la semana, compactar señales semanales y preparar encargos con acciones breves, fuente original y referencias existentes; confirmar tarea y vínculo por separado y conciliar respuestas perdidas sin duplicar. Añadir handler Corcho privado conforme CTR-DESPACHO-CORCHO, pendiente de integración y despliegue en el proyecto existente.",
+  "summary": "Completar el contador de proyectos en riesgo de la franja semanal compacta: incluir todos los proyectos visibles sin el límite heredado de cuatro tarjetas y mantener el desplegable contenido en el viewport. Continúan vigentes la preparación de encargos y el handler Corcho ya integrados; instalación GAS pendiente por separado.",
   "components": [
     "SYS-TAREAS",
     "GAS-OPERACION",

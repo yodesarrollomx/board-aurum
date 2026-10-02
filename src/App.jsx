@@ -1348,7 +1348,7 @@ function Board({ onLogout }) {
 
   const weekStats = useMemo(() => calcWeekStats(tasks.filter(t => !correctionIds.has(t.id))), [tasks, correctionIds]);
   const duplicadas = useMemo(() => calcDuplicadas(tasks), [tasks]);
-  const riskyProjects = useMemo(() => projectsList.filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo").slice(0, 4), [projectsList]);
+  const riskyProjects = useMemo(() => projectsList.filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo"), [projectsList]);
 
   const selectedTask = useMemo(() => tasks.find(t => t.id === selectedTaskId) || null, [tasks, selectedTaskId]);
 
