@@ -4,7 +4,8 @@
  *     return jsonOut_(corchoHandle_(payload));
  *   }
  * Propiedades privadas: CORCHO_OWNER_EMAIL, CORCHO_SPREADSHEET_ID.
- * No modificar getAll/update; no ejecutar una inicialización al leer.
+ * No modificar getAll/update; no crear infraestructura ni cambiar permisos.
+ * Drive se consulta solo con los scopes ya autorizados del proyecto actual.
  */
 function corchoHandle_(payload) {
   payload = payload || {};
@@ -15,8 +16,10 @@ function corchoHandle_(payload) {
   try {
     var spreadsheetId = PropertiesService.getScriptProperties().getProperty('CORCHO_SPREADSHEET_ID');
     if (!spreadsheetId) return { ok: false, error: 'configuracion' };
+    corchoStorageGuard_(spreadsheetId);
     var book = SpreadsheetApp.openById(spreadsheetId);
     var sheet = book.getSheetByName('Corcho');
+    if (!sheet) return { ok: false, error: 'configuracion' };
     var current = corchoRead_(sheet);
     if (payload.action === 'corchoGet') return { ok: true, version: current.version, data: current.data };
     if (!Number.isSafeInteger(payload.version) || payload.version < 0) return { ok: false, error: 'version' };
@@ -25,11 +28,13 @@ function corchoHandle_(payload) {
     var nextVersion = current.version + 1;
     var rows = [['id', 'version', 'payload_json'], ['@config', nextVersion, JSON.stringify(prepared.axes)]];
     prepared.notes.forEach(function (note) { rows.push([note.id, nextVersion, JSON.stringify(note)]); });
-    if (!sheet) sheet = book.insertSheet('Corcho');
+    // Sin caché positiva: volver a comprobar ACL/principal antes de escribir.
+    corchoStorageGuard_(spreadsheetId);
     // Todos los campos libres están dentro de JSON. IDs aceptados no son fórmulas.
     // El snapshot incluye las notas omitidas del cliente; jamás borra filas/notas.
     sheet.getRange(1, 1, rows.length, 3).setValues(rows);
     SpreadsheetApp.flush();
+    corchoStorageGuard_(spreadsheetId);
     var saved = corchoRead_(sheet);
     if (saved.version !== nextVersion || JSON.stringify(saved.data) !== JSON.stringify(prepared)) return { ok: false, error: 'guardado_por_conciliar' };
     return { ok: true, version: saved.version, data: saved.data };
@@ -58,10 +63,86 @@ function corchoOwner_(key) {
 }
 
 function corchoFail_(code) { var error = new Error('Corcho'); error.corchoCode = code; throw error; }
+
+// Preflight privado desde el editor actual; no añadir una ruta pública para él.
+// Usa el MISMO token/principal y guard que el runtime; no devuelve IDs ni correos.
+function corchoPreflight_() {
+  try {
+    var id = PropertiesService.getScriptProperties().getProperty('CORCHO_SPREADSHEET_ID');
+    if (!id) corchoFail_('configuracion');
+    corchoStorageGuard_(id);
+    return { ok: true };
+  } catch (err) { return { ok: false, error: err && err.corchoCode || 'privacidad_no_verificada' }; }
+}
+
+function corchoDriveGet_(path, query, token) {
+  var search = Object.keys(query).map(function (key) { return encodeURIComponent(key) + '=' + encodeURIComponent(query[key]); }).join('&');
+  var response;
+  try {
+    response = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/' + path + '?' + search, {
+      method: 'get', headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true, followRedirects: false
+    });
+  } catch (err) { corchoFail_('consentimiento_requerido'); }
+  var status = response.getResponseCode();
+  if (status === 401 || status === 403) corchoFail_('consentimiento_requerido');
+  if (status !== 200) corchoFail_('privacidad_no_verificada');
+  var body;
+  try { body = JSON.parse(response.getContentText()); } catch (err) { corchoFail_('privacidad_no_verificada'); }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) corchoFail_('privacidad_no_verificada');
+  return body;
+}
+
+function corchoStorageGuard_(spreadsheetId) {
+  var owner = String(PropertiesService.getScriptProperties().getProperty('CORCHO_OWNER_EMAIL') || '').trim().toLowerCase();
+  if (!owner || typeof spreadsheetId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(spreadsheetId)) corchoFail_('configuracion');
+  var token;
+  try { token = ScriptApp.getOAuthToken(); } catch (err) { corchoFail_('consentimiento_requerido'); }
+  if (!token || typeof token !== 'string') corchoFail_('consentimiento_requerido');
+  // getOAuthToken corresponde al usuario efectivo, no a la identidad del cliente.
+  var principal = corchoDriveGet_('about', { fields: 'user(emailAddress,permissionId)' }, token).user;
+  if (!principal || String(principal.emailAddress || '').toLowerCase() !== owner || !principal.permissionId) corchoFail_('principal_incompatible');
+  var visited = Object.create(null), pending = [spreadsheetId], files = 0;
+  while (pending.length) {
+    var id = pending.pop();
+    if (typeof id !== 'string' || !/^[A-Za-z0-9_-]+$/.test(id) || visited[id] || ++files > 100) corchoFail_('privacidad_no_verificada');
+    visited[id] = true;
+    var filePath = 'files/' + encodeURIComponent(id);
+    var file = corchoDriveGet_(filePath, {
+      fields: 'id,mimeType,driveId,trashed,ownedByMe,owners(emailAddress,permissionId),parents',
+      supportsAllDrives: 'true'
+    }, token);
+    var expectedType = id === spreadsheetId ? 'application/vnd.google-apps.spreadsheet' : 'application/vnd.google-apps.folder';
+    if (file.id !== id || file.mimeType !== expectedType || file.driveId || file.trashed !== false || file.ownedByMe !== true ||
+        !Array.isArray(file.owners) || file.owners.length !== 1 ||
+        String(file.owners[0].emailAddress || '').toLowerCase() !== owner || file.owners[0].permissionId !== principal.permissionId) corchoFail_('almacen_no_privado');
+    var parents = file.parents === undefined ? [] : file.parents;
+    if (!Array.isArray(parents) || parents.length > 1) corchoFail_('privacidad_no_verificada');
+    parents.forEach(function (parent) { pending.push(parent); });
+    var pageToken = '', seenTokens = Object.create(null), pages = 0, permissions = 0;
+    do {
+      if (++pages > 100 || (pageToken && seenTokens[pageToken])) corchoFail_('privacidad_no_verificada');
+      seenTokens[pageToken] = true;
+      var query = { fields: 'nextPageToken,permissions(id,type,role,emailAddress,deleted,pendingOwner,view)',
+        pageSize: '100', supportsAllDrives: 'true', includePermissionsForView: 'published' };
+      if (pageToken) query.pageToken = pageToken;
+      var page = corchoDriveGet_(filePath + '/permissions', query, token);
+      if (!Array.isArray(page.permissions)) corchoFail_('privacidad_no_verificada');
+      page.permissions.forEach(function (permission) {
+        if (!permission || permission.type !== 'user' || permission.role !== 'owner' || permission.deleted || permission.pendingOwner || permission.view ||
+            String(permission.emailAddress || '').toLowerCase() !== owner || permission.id !== principal.permissionId || ++permissions > 1) corchoFail_('almacen_no_privado');
+      });
+      if (page.nextPageToken !== undefined && (typeof page.nextPageToken !== 'string' || !page.nextPageToken)) corchoFail_('privacidad_no_verificada');
+      pageToken = page.nextPageToken || '';
+    } while (pageToken);
+    if (permissions !== 1) corchoFail_('privacidad_no_verificada');
+  }
+}
+
 function corchoRead_(sheet) {
-  if (!sheet || sheet.getLastRow() === 0) return { version: 0, data: { axes: { ejeX: 'Personas', ejeY: 'Pendientes' }, notes: [] } };
+  if (!sheet || sheet.getLastRow() === 0) corchoFail_('almacen');
   var rows = sheet.getRange(1, 1, sheet.getLastRow(), 3).getValues();
   if (rows[0].join('|') !== 'id|version|payload_json') corchoFail_('almacen');
+  if (rows.length === 1) return { version: 0, data: { axes: { ejeX: 'Personas', ejeY: 'Pendientes' }, notes: [] } };
   var version = 0, axes = null, notes = [], used = {};
   rows.slice(1).forEach(function (row) {
     if (!row[0]) return;

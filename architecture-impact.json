@@ -1,22 +1,21 @@
 {
-  "model_revision": "2026-10-01.26-moac-amalaya-chinches",
-  "proposal_id": "CHG-CHINCHES-CIERRE-001",
-  "summary": "Completar el contador de riesgos sin límite de cuatro tarjetas y contener su desplegable en el viewport. Al preparar un encargo existente conservar también sus flags de archivo/papelera; impedir preparación desde la papelera. Continúan vigentes contratos de encargos y Corcho; instalación GAS pendiente por separado.",
+  "model_revision": "2026-10-01.29-corcho-privado",
+  "proposal_id": "CHG-DESPACHO-CHINCHES-001",
+  "summary": "Proteger el Corcho en almacén privado separado: verificar token de ejecución y dueño único exacto, archivo y ancestros, permisos completos paginados incluidos publicados; fallo cerrado sin servicio/scopes. Leer/guardar no crean infraestructura ni cambian ACL. Fuente reviewable; integración y despliegue GAS pendientes de proyecto, principal y permisos vigentes.",
   "components": [
+    "SYS-DESPACHO",
     "SYS-TAREAS",
     "GAS-OPERACION",
-    "SHEET-OPERACION",
-    "GAS-MOAC-METAS",
-    "SHEET-MOAC-METAS",
-    "SYS-DESPACHO",
-    "GAS-PORTERO"
+    "STORE-DESPACHO-CORCHO",
+    "GAS-PORTERO",
+    "EXT-DRIVE"
   ],
   "tests": [
     "git diff --check",
     "npm ci && npm run build",
-    "node --test tests/*.test.mjs: flags, preparación y recuperación parcial, identidad exacta/DP, CAS, posiciones, archivo/restauración, lectura sin creación ni fuga",
-    "Interfaz con datos sintéticos: panel separado, franja compacta, desglose, fallo de vínculo y recuperación sin duplicar en escritorio y móvil",
-    "Comprobar frontend publicado y fuente activa GAS por separado; ninguna prueba escribe datos de negocio"
+    "node --test tests/*.test.mjs: principal exacto, correo Portero, archivo/ancestros y ACL paginada, permisos publicados, sin sharedDrive, failclosed, sin creación; CAS, notas/archivo/restauración y regresiones de encargos",
+    "Inspección del manifiesto y fuente activos, disponibilidad Drive y principal efectivo pendientes de identificar el proyecto; ninguna ampliación automática de scopes/ACL",
+    "Publicación de fuente y despliegue GAS se acreditan por separado; no ejecutar escrituras de prueba en negocio"
   ],
   "rollback": "Revertir frontend mediante PR; para Corcho restaurar exclusivamente la versión de implementación anterior respaldada, conservando URL, permisos, editor pendiente y filas. No borrar ni restaurar datos de negocio. Git no acredita despliegue GAS."
 }
