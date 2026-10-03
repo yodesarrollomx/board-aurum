@@ -1,9 +1,12 @@
 /** Corcho privado · CTR-DESPACHO-CORCHO.
- * Añadir al proyecto existente de Operación. Antes del guard general TA:
- *   if (/^corcho(Get|Save)$/.test(payload.action || '')) {
- *     return jsonOut_(corchoHandle_(payload));
+ * Adaptador provisional para Portero existente; integración por coordinador.
+ * Tras parsear JSON en d, antes de cfg y esCredencialValida_ en Code:
+ *   if (d.action === 'corchoGet' || d.action === 'corchoSave') {
+ *     return respuesta_(corchoHandle_(d));
  *   }
  * Propiedades privadas: CORCHO_OWNER_EMAIL, CORCHO_SPREADSHEET_ID.
+ * ScriptProperties tiene preferencia; fallback privado solo si existe función
+ * corchoDeploymentConfig_(). No desplegar la plantilla .gs.example.
  * No modificar getAll/update; no crear infraestructura ni cambiar permisos.
  * Drive se consulta solo con los scopes ya autorizados del proyecto actual.
  */
@@ -14,7 +17,7 @@ function corchoHandle_(payload) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) return { ok: false, error: 'ocupado' };
   try {
-    var spreadsheetId = PropertiesService.getScriptProperties().getProperty('CORCHO_SPREADSHEET_ID');
+    var spreadsheetId = corchoProperties_().getProperty('CORCHO_SPREADSHEET_ID');
     if (!spreadsheetId) return { ok: false, error: 'configuracion' };
     corchoStorageGuard_(spreadsheetId);
     var book = SpreadsheetApp.openById(spreadsheetId);
@@ -44,21 +47,51 @@ function corchoHandle_(payload) {
   } finally { lock.releaseLock(); }
 }
 
+// Consultar solo estas propiedades; ningún valor privado por defecto ni caché.
+function corchoProperties_() {
+  return { getProperty: function (key) {
+    if (key !== 'CORCHO_OWNER_EMAIL' && key !== 'CORCHO_SPREADSHEET_ID') return null;
+    try {
+      var props = typeof PropertiesService === 'undefined' ? null : PropertiesService.getScriptProperties();
+      var value = props ? props.getProperty(key) : null;
+      if (value !== undefined && value !== null && value !== '') return value;
+      if (typeof corchoDeploymentConfig_ !== 'function') return null;
+      var config = corchoDeploymentConfig_();
+      if (!config || typeof config !== 'object' || Array.isArray(config)) corchoFail_('configuracion');
+      if (!Object.prototype.hasOwnProperty.call(config, key)) return null;
+      value = config[key];
+      if (value === undefined || value === null || value === '') return null;
+      if (typeof value !== 'string') corchoFail_('configuracion');
+      return value;
+    } catch (err) { corchoFail_('configuracion'); }
+  } };
+}
+
+function corchoIdentity_(key) {
+  // V57: valida roster/sesión sin renovar SESIONES ni escribir cachés.
+  if (typeof canjearLigaLento_ === 'function') return canjearLigaLento_(key, 'DP');
+  // Portero local incompleto: nunca usar el helper que renueva ni pasar a HTTP.
+  if (typeof canjearLiga_ === 'function') return null;
+  if (typeof PORTERO_EXEC !== 'string' || !PORTERO_EXEC) return null;
+  var result = UrlFetchApp.fetch(PORTERO_EXEC + '?recurso=canje&t=' + encodeURIComponent(key), { muteHttpExceptions: true, followRedirects: true });
+  if (result.getResponseCode() !== 200) return null;
+  return JSON.parse(result.getContentText());
+}
+
 function corchoOwner_(key) {
-  var props = PropertiesService.getScriptProperties();
-  var owner = String(props.getProperty('CORCHO_OWNER_EMAIL') || '').trim().toLowerCase();
-  key = String(key || '').trim();
-  if (!owner || key.length < 4 || key.length > 4096) return false;
   try {
+    var owner = String(corchoProperties_().getProperty('CORCHO_OWNER_EMAIL') || '').trim().toLowerCase();
+    key = String(key || '').trim();
+    if (!owner || key.length < 4 || key.length > 4096) return false;
     // Sin caché positiva: revocar DP o la sesión tiene efecto en la siguiente llamada.
-    var result = UrlFetchApp.fetch(PORTERO_EXEC + '?recurso=canje&t=' + encodeURIComponent(key), { muteHttpExceptions: true, followRedirects: true });
-    if (result.getResponseCode() !== 200) return false;
-    var identity = JSON.parse(result.getContentText());
+    var identity = corchoIdentity_(key);
+    if (!identity || identity.ok !== true) return false;
     // El contrato real de canje usa `correo`; jamás tomarlo del payload cliente.
     var email = String(identity.correo || '').trim().toLowerCase();
     var boards = Array.isArray(identity.boards) ? identity.boards : String(identity.boards || '').split(/[,;|\s]+/);
-    var allowed = boards.map(function (s) { return String(s).trim().toUpperCase(); }).indexOf('DP') >= 0 || String(identity.rol || '').toLowerCase() === 'admin' || boards.indexOf('*') >= 0;
-    return identity.ok === true && email === owner && allowed;
+    var list = boards.map(function (s) { return String(s).trim().toUpperCase(); });
+    var allowed = list.indexOf('DP') >= 0 || String(identity.rol || '').toLowerCase() === 'admin' || list.indexOf('*') >= 0;
+    return email === owner && allowed;
   } catch (err) { return false; }
 }
 
@@ -68,7 +101,7 @@ function corchoFail_(code) { var error = new Error('Corcho'); error.corchoCode =
 // Usa el MISMO token/principal y guard que el runtime; no devuelve IDs ni correos.
 function corchoPreflight_() {
   try {
-    var id = PropertiesService.getScriptProperties().getProperty('CORCHO_SPREADSHEET_ID');
+    var id = corchoProperties_().getProperty('CORCHO_SPREADSHEET_ID');
     if (!id) corchoFail_('configuracion');
     corchoStorageGuard_(id);
     return { ok: true };
@@ -93,7 +126,7 @@ function corchoDriveGet_(path, query, token) {
 }
 
 function corchoStorageGuard_(spreadsheetId) {
-  var owner = String(PropertiesService.getScriptProperties().getProperty('CORCHO_OWNER_EMAIL') || '').trim().toLowerCase();
+  var owner = String(corchoProperties_().getProperty('CORCHO_OWNER_EMAIL') || '').trim().toLowerCase();
   if (!owner || typeof spreadsheetId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(spreadsheetId)) corchoFail_('configuracion');
   var token;
   try { token = ScriptApp.getOAuthToken(); } catch (err) { corchoFail_('consentimiento_requerido'); }
@@ -143,17 +176,18 @@ function corchoRead_(sheet) {
   var rows = sheet.getRange(1, 1, sheet.getLastRow(), 3).getValues();
   if (rows[0].join('|') !== 'id|version|payload_json') corchoFail_('almacen');
   if (rows.length === 1) return { version: 0, data: { axes: { ejeX: 'Personas', ejeY: 'Pendientes' }, notes: [] } };
-  var version = 0, axes = null, notes = [], used = {};
+  var version = 0, axes = null, notes = [], used = {}, versions = [];
   rows.slice(1).forEach(function (row) {
     if (!row[0]) return;
     var id = String(row[0]);
     if (used[id] || !Number.isSafeInteger(Number(row[1])) || Number(row[1]) < 1) corchoFail_('almacen');
     used[id] = true;
+    versions.push(Number(row[1]));
     var value; try { value = JSON.parse(row[2]); } catch (err) { corchoFail_('almacen'); }
     if (id === '@config') { version = Number(row[1]); axes = value; }
     else { if (!value || value.id !== id) corchoFail_('almacen'); notes.push(value); }
   });
-  if (!axes) corchoFail_('almacen');
+  if (!axes || versions.some(function (rowVersion) { return rowVersion !== version; })) corchoFail_('almacen');
   return { version: version, data: { axes: axes, notes: notes } };
 }
 
