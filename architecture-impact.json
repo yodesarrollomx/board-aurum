@@ -1,7 +1,7 @@
 {
-  "model_revision": "2026-10-01.29-corcho-privado",
-  "proposal_id": "CHG-DESPACHO-CHINCHES-001",
-  "summary": "Sala #35: adaptador provisional de Corcho para Portero existente, con canjearLigaLento_(key, DP) local sin renovar SESIONES/caché y canje remoto original cuando no hay backend local. Configuración privada con prioridad ScriptProperties y fallback solo a función presente, sin defaults públicos. Mantiene propietario exacto y DP/admin/*, guard fresco de principal/ACL, CAS y filas con versión global coherente. Alojamiento propuesto en docs/corcho-portero-adapter.md para revisión Atlas; revisión aprobada y workflow fijado se conservan hasta esa revisión. Integración por coordinador y despliegue pendientes; sin acceso a secretos ni producción.",
+  "model_revision": "2026-10-03.44-corcho-provisional-035",
+  "proposal_id": "CHG-DESPACHO-CORCHO-PROVISIONAL-035",
+  "summary": "Sala #35: adaptador provisional Corcho en Portero existente, aprobado en CHG-DESPACHO-CORCHO-PROVISIONAL-035. Identidad local sin renovación de sesiones; configuración privada; ACL fresca y CAS global. Publicación del backend se acredita por separado.",
   "components": [
     "SYS-DESPACHO",
     "SYS-TAREAS",
@@ -15,9 +15,12 @@
     "npm ci && npm run build",
     "node --test tests/*.test.mjs: principal exacto, correo Portero, archivo/ancestros y ACL paginada, permisos publicados, sin sharedDrive, failclosed, sin creación; CAS, notas/archivo/restauración y regresiones de encargos",
     "node --test tests/corcho.test.mjs: preservar 17 existentes; contrato HTTP original y prioridad local canjearLigaLento_(key, DP), sesiones inválidas/revocadas y roster fresco, owner exacto DP/admin/*, sin renuevaSesion_/SESIONES/caché, configuración preferente/fallback/ausente/inválida y snapshots con versiones mezcladas",
-    "Validación estructural del manifiesto contra Atlas fijado; revisión de alojamiento provisional y actualización central pendientes antes de integrar",
+    "Validación estructural del manifiesto contra Atlas aprobado fijado; alojamiento provisional aprobado en propuesta central",
     "Fuente V57/helper y posición de despacho indicados por coordinador; fuente/manifiesto activos, disponibilidad Drive y principal efectivo no consultados en esta entrega; ninguna ampliación automática de scopes/ACL",
     "Publicación de fuente y despliegue GAS se acreditan por separado; no ejecutar escrituras de prueba en negocio"
   ],
-  "rollback": "Revertir este commit restaura la fuente de Git. Si el coordinador integra posteriormente el adaptador, restaurar exclusivamente fuente/versión anterior respaldada, conservando implementación, URL, configuración privada, permisos y filas. No borrar ni restaurar datos de negocio. Git y pruebas con dobles no acreditan despliegue GAS."
+  "rollback": "Revertir este commit restaura la fuente de Git. Si el coordinador integra posteriormente el adaptador, restaurar exclusivamente fuente/versión anterior respaldada, conservando implementación, URL, configuración privada, permisos y filas. No borrar ni restaurar datos de negocio. Git y pruebas con dobles no acreditan despliegue GAS.",
+  "contracts": [
+    "CTR-DESPACHO-CORCHO"
+  ]
 }
