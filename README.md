@@ -40,10 +40,25 @@ como booleanos, incluyendo textos `TRUE`/`FALSE`.
 ## Corcho privado · integración pendiente
 
 `apps-script/corcho.gs` implementa `CTR-DESPACHO-CORCHO` y se verifica con dobles;
-su presencia aquí no significa que esté desplegado. Debe integrarse **en el
-proyecto y la implementación actuales** de Operación, antes del guard TA, sin
-modificar `getAll` ni `update`. Necesita `PORTERO_EXEC`, `jsonOut_` y las
-propiedades privadas `CORCHO_OWNER_EMAIL` y `CORCHO_SPREADSHEET_ID`.
+su presencia aquí no significa que esté desplegado. El adaptador provisional de
+Sala #35 se integrará por el coordinador **en el backend Portero existente**:
+después de parsear JSON en `d`, antes de `cfg` y de `esCredencialValida_`, con
+`respuesta_(corchoHandle_(d))` solo para `d.action === 'corchoGet'` o
+`d.action === 'corchoSave'`. Conserva `getAll` y `update`.
+
+La identidad local usa `canjearLigaLento_(key, 'DP')`, sin renovar sesiones ni
+escribir caché. Nunca invoca `canjearLiga_`; si el backend local solo tiene ese
+helper, falla cerrado. Sin Portero local mantiene el canje HTTP original con
+`PORTERO_EXEC`. Un rechazo local no recurre al remoto.
+
+`corchoProperties_()` prefiere ScriptProperties por clave y, si falta, permite
+el fallback solo cuando existe la función privada `corchoDeploymentConfig_()`.
+Requiere `CORCHO_OWNER_EMAIL` y `CORCHO_SPREADSHEET_ID`, sin valores públicos por
+defecto. La plantilla `apps-script/corcho-deployment-config.gs.example` contiene
+solo placeholders y **no se despliega**. La propuesta de alojamiento, el despacho
+exacto y la evidencia pendiente se detallan en
+[el documento del adaptador](docs/corcho-portero-adapter.md); revisión de Atlas
+pendiente antes de integrar.
 
 - `corchoGet {k}` → `{ok, version, data: {axes, notes}}`; leer no crea recursos.
 - `corchoSave {k, version, data}` → ACK con versión global confirmada. Un
@@ -55,7 +70,8 @@ propiedades privadas `CORCHO_OWNER_EMAIL` y `CORCHO_SPREADSHEET_ID`.
 - Solo el correo exacto del propietario, obtenido del canje Portero, con DP o
   autorización administrativa vigente. Un administrador ajeno no accede.
 - Hoja `Corcho`: `id,version,payload_json`; `@config` guarda ejes y versión
-  global. Se preservan las notas omitidas; archivo/restauración no borran filas.
+  global. Toda fila ocupada debe tener esa misma versión; un snapshot mezclado
+  falla cerrado. Se preservan las notas omitidas; archivo/restauración no borran filas.
 - El almacén es un libro privado separado. La infraestructura y los headers
   se preparan antes de la integración; el handler no crea libros, pestañas ni
   permisos. Una hoja con solo los headers devuelve la versión inicial cero.

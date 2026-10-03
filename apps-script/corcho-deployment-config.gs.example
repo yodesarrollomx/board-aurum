@@ -1,0 +1,11 @@
+/** Plantilla documental: NO desplegar este archivo ni sus placeholders.
+ * Configurar ScriptProperties de preferencia. Si el coordinador necesita el
+ * fallback, la función completada vive solo en la fuente privada del proyecto.
+ * Nunca publicar IDs de libros ni correos reales en el repositorio.
+ */
+function corchoDeploymentConfig_() {
+  return {
+    CORCHO_OWNER_EMAIL: '<CORCHO_OWNER_EMAIL>',
+    CORCHO_SPREADSHEET_ID: '<CORCHO_SPREADSHEET_ID>'
+  };
+}

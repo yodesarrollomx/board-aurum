@@ -1,7 +1,7 @@
 {
-  "model_revision": "2026-10-01.29-corcho-privado",
-  "proposal_id": "CHG-DESPACHO-CHINCHES-001",
-  "summary": "Proteger el Corcho en almacén privado separado: verificar token de ejecución y dueño único exacto, archivo y ancestros, permisos completos paginados incluidos publicados; fallo cerrado sin servicio/scopes. Leer/guardar no crean infraestructura ni cambian ACL. Fuente reviewable; integración y despliegue GAS pendientes de proyecto, principal y permisos vigentes.",
+  "model_revision": "2026-10-03.44-corcho-provisional-035",
+  "proposal_id": "CHG-DESPACHO-CORCHO-PROVISIONAL-035",
+  "summary": "Sala #35: adaptador provisional Corcho en Portero existente, aprobado en CHG-DESPACHO-CORCHO-PROVISIONAL-035. Identidad local sin renovación de sesiones; configuración privada; ACL fresca y CAS global. Publicación del backend se acredita por separado.",
   "components": [
     "SYS-DESPACHO",
     "SYS-TAREAS",
@@ -14,8 +14,13 @@
     "git diff --check",
     "npm ci && npm run build",
     "node --test tests/*.test.mjs: principal exacto, correo Portero, archivo/ancestros y ACL paginada, permisos publicados, sin sharedDrive, failclosed, sin creación; CAS, notas/archivo/restauración y regresiones de encargos",
-    "Inspección del manifiesto y fuente activos, disponibilidad Drive y principal efectivo pendientes de identificar el proyecto; ninguna ampliación automática de scopes/ACL",
+    "node --test tests/corcho.test.mjs: preservar 17 existentes; contrato HTTP original y prioridad local canjearLigaLento_(key, DP), sesiones inválidas/revocadas y roster fresco, owner exacto DP/admin/*, sin renuevaSesion_/SESIONES/caché, configuración preferente/fallback/ausente/inválida y snapshots con versiones mezcladas",
+    "Validación estructural del manifiesto contra Atlas aprobado fijado; alojamiento provisional aprobado en propuesta central",
+    "Fuente V57/helper y posición de despacho indicados por coordinador; fuente/manifiesto activos, disponibilidad Drive y principal efectivo no consultados en esta entrega; ninguna ampliación automática de scopes/ACL",
     "Publicación de fuente y despliegue GAS se acreditan por separado; no ejecutar escrituras de prueba en negocio"
   ],
-  "rollback": "Revertir frontend mediante PR; para Corcho restaurar exclusivamente la versión de implementación anterior respaldada, conservando URL, permisos, editor pendiente y filas. No borrar ni restaurar datos de negocio. Git no acredita despliegue GAS."
+  "rollback": "Revertir este commit restaura la fuente de Git. Si el coordinador integra posteriormente el adaptador, restaurar exclusivamente fuente/versión anterior respaldada, conservando implementación, URL, configuración privada, permisos y filas. No borrar ni restaurar datos de negocio. Git y pruebas con dobles no acreditan despliegue GAS.",
+  "contracts": [
+    "CTR-DESPACHO-CORCHO"
+  ]
 }
