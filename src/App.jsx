@@ -1,3 +1,4 @@
+import {moacReports} from "./moac-reports.mjs";
 import React, { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { normalizeTask, dataProblems, prepareIntake, savePreparedActions } from "./task-intake.mjs";
 import {
@@ -1466,6 +1467,23 @@ function Board({ onLogout }) {
             </section>
 
             <aside className="space-y-5">
+              {(moacReports(selectedTask).length > 0 || selectedTask.auton_reports_unavailable) && (
+                <section className="yo-card p-5" aria-label="Entregas del autón">
+                  <h2 className="yo-eyebrow mb-4">Entregas del autón · para revisión</h2>
+                  <p className="text-xs subtle mb-3">Conservan el estado de esta tarea. La aceptación corresponde a su responsable.</p>
+                  {selectedTask.auton_reports_unavailable && <p role="status" className="text-sm subtle">No se pudieron consultar los recibos de entrega. Los datos de la tarea siguen disponibles.</p>}
+                  <ol className="space-y-3">
+                    {moacReports(selectedTask).map(r => (
+                      <li key={r.request_id} className="panel-soft p-3">
+                        <p className="text-sm whitespace-pre-wrap">{r.summary}</p>
+                        <p className="text-xs subtle mt-2">{r.objetivo_id} · {r.meta_id} · {new Date(r.at).toLocaleString("es-MX", {timeZone:"America/Hermosillo"})}</p>
+                        {r.evidence.map(e => <a key={e.url} href={e.url} target="_blank" rel="noopener noreferrer" className="block text-sm mt-2 hover:underline">{e.title}</a>)}
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              )}
+
               <section className="yo-card p-5">
                 <h2 className="yo-eyebrow mb-4">Evidencias</h2>
                 <div className="space-y-2">

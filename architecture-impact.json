@@ -1,26 +1,24 @@
 {
-  "model_revision": "2026-10-03.44-corcho-provisional-035",
-  "proposal_id": "CHG-DESPACHO-CORCHO-PROVISIONAL-035",
-  "summary": "Sala #35: adaptador provisional Corcho en Portero existente, aprobado en CHG-DESPACHO-CORCHO-PROVISIONAL-035. Identidad local sin renovación de sesiones; configuración privada; ACL fresca y CAS global. Publicación del backend se acredita por separado.",
+  "model_revision": "2026-10-12.moac-nativo138.1",
+  "proposal_id": "CHG-DESPACHO-MOAC-CANONICO-20261012",
+  "summary": "Mostrar entregas confirmadas del autón ligadas a acciones MOAC nativas, conservando estado, responsable y aprobación. Backend publicado se verifica por separado.",
   "components": [
-    "SYS-DESPACHO",
     "SYS-TAREAS",
     "GAS-OPERACION",
-    "STORE-DESPACHO-CORCHO",
-    "GAS-PORTERO",
-    "EXT-DRIVE"
+    "SHEET-OPERACION",
+    "GAS-MOAC-METAS",
+    "SHEET-MOAC-METAS",
+    "SYS-DESPACHO-3D",
+    "GAS-PORTERO"
+  ],
+  "contracts": [
+    "CTR-MOAC-ENCARGOS"
   ],
   "tests": [
     "git diff --check",
     "npm ci && npm run build",
-    "node --test tests/*.test.mjs: principal exacto, correo Portero, archivo/ancestros y ACL paginada, permisos publicados, sin sharedDrive, failclosed, sin creación; CAS, notas/archivo/restauración y regresiones de encargos",
-    "node --test tests/corcho.test.mjs: preservar 17 existentes; contrato HTTP original y prioridad local canjearLigaLento_(key, DP), sesiones inválidas/revocadas y roster fresco, owner exacto DP/admin/*, sin renuevaSesion_/SESIONES/caché, configuración preferente/fallback/ausente/inválida y snapshots con versiones mezcladas",
-    "Validación estructural del manifiesto contra Atlas aprobado fijado; alojamiento provisional aprobado en propuesta central",
-    "Fuente V57/helper y posición de despacho indicados por coordinador; fuente/manifiesto activos, disponibilidad Drive y principal efectivo no consultados en esta entrega; ninguna ampliación automática de scopes/ACL",
-    "Publicación de fuente y despliegue GAS se acreditan por separado; no ejecutar escrituras de prueba en negocio"
+    "node --test tests/*.test.mjs: recibos por ID, estados ajenos, duplicados, fecha y enlaces inseguros",
+    "Backend: pruebas aisladas y publicación en URL existente; ninguna escritura de prueba en negocio."
   ],
-  "rollback": "Revertir este commit restaura la fuente de Git. Si el coordinador integra posteriormente el adaptador, restaurar exclusivamente fuente/versión anterior respaldada, conservando implementación, URL, configuración privada, permisos y filas. No borrar ni restaurar datos de negocio. Git y pruebas con dobles no acreditan despliegue GAS.",
-  "contracts": [
-    "CTR-DESPACHO-CORCHO"
-  ]
+  "rollback": "Revertir vista por PR; conservar tareas, estados, evidencia y recibos del backend. No restaurar hojas desde snapshots."
 }
